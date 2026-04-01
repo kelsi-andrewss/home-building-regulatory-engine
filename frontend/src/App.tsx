@@ -5,9 +5,11 @@ import { assessParcel } from './api/client';
 import AddressSearch from './components/AddressSearch';
 import BuildingTypeSelector from './components/BuildingTypeSelector';
 import BuildabilityReport from './components/BuildabilityReport';
+import ChatInterface from './components/ChatInterface';
 import CitationsPanel from './components/CitationsPanel';
 import MapboxMap from './components/MapboxMap';
 import AdminDashboard from './pages/AdminDashboard';
+import { AssessmentProvider, useAssessment } from './context/AssessmentContext';
 
 interface AppState {
   assessment: AssessmentResponse | null;
@@ -64,17 +66,23 @@ export default function App() {
     return <AdminDashboard />;
   }
 
-  return <MainApp />;
+  return (
+    <AssessmentProvider>
+      <MainApp />
+    </AssessmentProvider>
+  );
 }
 
 function MainApp() {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { dispatch: ctxDispatch } = useAssessment();
 
   async function handleParcelSelect(candidate: GeocodingResult) {
     dispatch({ type: 'SELECT_PARCEL' });
     try {
       const result = await assessParcel({ address: candidate.address, apn: candidate.apn });
       dispatch({ type: 'SET_ASSESSMENT', payload: result });
+      ctxDispatch({ type: 'SET_ASSESSMENT', payload: result });
     } catch (err) {
       console.error('Assessment failed:', err);
       dispatch({ type: 'SEARCH_FAILED' });
@@ -90,6 +98,7 @@ function MainApp() {
     : [];
 
   return (
+    <>
     <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', height: '100vh' }}>
       {/* Sidebar */}
       <div
@@ -162,5 +171,7 @@ function MainApp() {
         )}
       </div>
     </div>
+    <ChatInterface />
+    </>
   );
 }

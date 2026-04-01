@@ -64,7 +64,13 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export function assessParcel(input: { address?: string; apn?: string }): Promise<AssessmentResponse> {
+export function assessParcel(input: {
+  address?: string;
+  apn?: string;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  sqft?: number | null;
+}): Promise<AssessmentResponse> {
   return request<AssessmentResponse>(`${BASE_URL}/assess`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -78,4 +84,44 @@ export function getParcel(apn: string): Promise<ParcelData & { zoning: ZoningDat
 
 export function geocodeAddress(query: string): Promise<GeocodingResult[]> {
   return request<GeocodingResult[]>(`${BASE_URL}/geocode?q=${encodeURIComponent(query)}`);
+}
+
+export async function* chatFollowup(
+  assessmentId: string,
+  message: string,
+): AsyncGenerator<string, void, unknown> {
+  const res = await fetch(`${BASE_URL}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ assessment_id: assessmentId, message }),
+  });
+  if (!res.ok) {
+    throw new Error(`Chat request failed: ${res.status}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    yield decoder.decode(value, { stream: true });
+  }
+}
+
+export async function sendFeedback(
+  assessmentId: string,
+  constraintName: string,
+  vote: 'up' | 'down' | null,
+  reason?: string,
+): Promise<void> {
+  fetch(`${BASE_URL}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      assessment_id: assessmentId,
+      constraint_name: constraintName,
+      vote,
+      ...(reason ? { reason } : {}),
+    }),
+  }).catch(() => {});
 }

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { AssessmentResponse, BuildingType, Confidence } from '../api/client';
+import FeedbackButton from './FeedbackButton';
+import ParameterInputs from './ParameterInputs';
 
 const CONFIDENCE_COLORS: Record<Confidence, string> = {
   verified: '#10b981',
@@ -52,6 +54,7 @@ export default function BuildabilityReport({ assessment, selectedType, onHoverCo
 
   return (
     <div>
+      <ParameterInputs />
       <div
         style={{
           display: 'flex',
@@ -84,6 +87,7 @@ export default function BuildabilityReport({ assessment, selectedType, onHoverCo
             <th style={{ padding: '6px 8px', fontWeight: 600, color: '#374151' }}>Value</th>
             <th style={{ padding: '6px 8px', fontWeight: 600, color: '#374151' }}>Confidence</th>
             <th style={{ padding: '6px 4px', fontWeight: 600, color: '#374151', width: '40px' }}></th>
+            <th style={{ padding: '6px 4px', fontWeight: 600, color: '#374151', width: '56px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -93,7 +97,7 @@ export default function BuildabilityReport({ assessment, selectedType, onHoverCo
               onMouseEnter={() => onHoverConstraint(c.name)}
               onMouseLeave={() => onHoverConstraint(null)}
             >
-              <td colSpan={4} style={{ padding: 0 }}>
+              <td colSpan={5} style={{ padding: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -133,11 +137,14 @@ export default function BuildabilityReport({ assessment, selectedType, onHoverCo
                           </button>
                         )}
                       </td>
+                      <td style={{ padding: '4px', width: '56px', textAlign: 'center' }}>
+                        <FeedbackButton constraintName={c.name} />
+                      </td>
                     </tr>
                     {expandedCitations.has(c.name) && (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           style={{
                             padding: '8px 12px 12px',
                             background: '#f9fafb',
