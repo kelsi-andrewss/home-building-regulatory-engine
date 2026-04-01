@@ -1,4 +1,4 @@
-import { useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { AssessmentResponse, BuildingType, Constraint, GeocodingResult } from './api/client';
 import { assessParcel } from './api/client';
@@ -7,6 +7,7 @@ import BuildingTypeSelector from './components/BuildingTypeSelector';
 import BuildabilityReport from './components/BuildabilityReport';
 import CitationsPanel from './components/CitationsPanel';
 import MapboxMap from './components/MapboxMap';
+import AdminDashboard from './pages/AdminDashboard';
 
 interface AppState {
   assessment: AssessmentResponse | null;
@@ -46,7 +47,27 @@ function appReducer(state: AppState, action: Action): AppState {
   }
 }
 
+function useHashRoute() {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const onHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  return hash;
+}
+
 export default function App() {
+  const hash = useHashRoute();
+
+  if (hash === '#/admin') {
+    return <AdminDashboard />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   async function handleParcelSelect(candidate: GeocodingResult) {
