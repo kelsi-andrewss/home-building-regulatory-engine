@@ -1,0 +1,2 @@
+class ParcelServiceError(Exception):
+    pass
