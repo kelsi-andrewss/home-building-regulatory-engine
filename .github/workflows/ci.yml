@@ -17,7 +17,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra dev
 
       - name: Run tests
         run: uv run pytest backend/tests/ -v --ignore=backend/tests/test_ingestion.py --ignore=backend/tests/test_synthesis.py
