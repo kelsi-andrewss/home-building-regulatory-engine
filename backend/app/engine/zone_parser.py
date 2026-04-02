@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-KNOWN_HEIGHT_DISTRICTS = ("1SS", "1XL", "1VL", "1L", "1")
+KNOWN_HEIGHT_DISTRICTS = ("1SS", "1XL", "1VL", "1L", "1", "2", "3", "4")
 
 
 @dataclass
@@ -28,6 +28,9 @@ def parse_zone(zone_cmplt: str) -> ParsedZone:
 
     # Strip known suffix overlays: R1-1-CPIO -> R1-1
     working = re.sub(r"-(?:CPIO|CUGU|CDO|HPOZ|RFA|NSO)$", "", working)
+
+    # Strip D-limitation suffix: C2-2D -> C2-2
+    working = re.sub(r"D$", "", working)
 
     # Find all dash positions
     dash_positions = [i for i, c in enumerate(working) if c == "-"]
