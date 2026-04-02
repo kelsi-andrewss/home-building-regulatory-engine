@@ -55,8 +55,6 @@ def _mock_db():
     parcel_id_holder.apn = None
     parcel_id_holder.lot_area_sf = None
 
-    original_add = mock_db.add
-
     def track_add(obj):
         # Give persisted rows a fake id so downstream code works
         if hasattr(obj, "apn") and not hasattr(obj, "_id_set"):
@@ -65,7 +63,6 @@ def _mock_db():
         if hasattr(obj, "zone_complete") and not hasattr(obj, "_id_set"):
             obj.id = "fake-zone-id"
             obj._id_set = True
-        return original_add(obj)
 
     mock_db.add = track_add
     return mock_db

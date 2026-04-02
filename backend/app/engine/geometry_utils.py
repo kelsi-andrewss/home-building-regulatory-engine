@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 
 from pyproj import Transformer
 from shapely.geometry import LineString, Point, mapping, shape
@@ -78,7 +79,11 @@ def calculate_buildable_area(setback_polygon: dict) -> float:
 def derive_lot_dimensions(parcel_geometry: dict) -> dict:
     """Estimate lot width and depth from minimum bounding rectangle."""
     poly = shape(parcel_geometry)
-    mbr = poly.minimum_rotated_rectangle
+    if poly.is_empty or poly.area == 0:
+        return {"width": 0.0, "depth": 0.0}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mbr = poly.minimum_rotated_rectangle
 
     coords = list(mbr.exterior.coords)
     # MBR has 5 coords (closed ring), so 4 unique vertices
@@ -125,7 +130,9 @@ def classify_parcel_edges(
     needs_proj = _is_wgs84(parcel_poly)
     work_poly = _project_to_feet(parcel_poly) if needs_proj else parcel_poly
 
-    mbr = work_poly.minimum_rotated_rectangle
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mbr = work_poly.minimum_rotated_rectangle
     mbr_coords = list(mbr.exterior.coords)[:4]
 
     # Two pairs of opposite edges
