@@ -39,7 +39,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["cd /opt/app/repo && git pull origin main && cd /opt/app && cp repo/backend -r backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d"]' \
+            --parameters 'commands=["git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d"]' \
             --query "Command.CommandId" \
             --output text)
 
