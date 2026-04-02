@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from shapely.geometry import shape
-
 from backend.app.engine.geometry_utils import derive_lot_dimensions
 
 # Cover panel delivery constraints
@@ -22,7 +20,7 @@ class PanelFitResult:
 
 def check_panel_fit(
     buildable_envelope: dict,
-    classified_edges: dict[str, float],
+    classified_edges: dict,
     side_setbacks: float,
 ) -> PanelFitResult:
     """Check whether Cover's prefab panels can be delivered and placed.
