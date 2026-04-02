@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.db.models import Assessment, Parcel, Zone
+from backend.app.db.seed_data import SUPPORTED_ZONE_CLASSES
 from backend.app.db.session import get_db
 from backend.app.engine.rule_engine import ConstraintResolver
 from backend.app.engine.zone_parser import parse_zone
@@ -204,11 +205,10 @@ async def _assess_inner(req, db, parcel_svc, resolver):
             detail=f"Zone '{parcel_data.zoning.zone_complete}' is not supported: {exc}",
         )
 
-    _SUPPORTED_PREFIXES = ("RE", "RS", "R1", "R2", "R3", "R4", "R5", "RD")
-    if not any(parsed.zone_class.startswith(p) for p in _SUPPORTED_PREFIXES):
+    if parsed.zone_class not in SUPPORTED_ZONE_CLASSES:
         raise HTTPException(
             status_code=422,
-            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not a residential zone. Only residential zones (R1, R2, RD, etc.) are currently supported.",
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' ({parsed.zone_class}) is not supported. Supported zones: {', '.join(sorted(SUPPORTED_ZONE_CLASSES))}.",
         )
 
     # Persist or update parcel
@@ -493,11 +493,10 @@ async def get_design_constraints(
             detail=f"Zone '{parcel_data.zoning.zone_complete}' is not supported: {exc}",
         )
 
-    _SUPPORTED_PREFIXES = ("RE", "RS", "R1", "R2", "R3", "R4", "R5", "RD")
-    if not any(parsed.zone_class.startswith(p) for p in _SUPPORTED_PREFIXES):
+    if parsed.zone_class not in SUPPORTED_ZONE_CLASSES:
         raise HTTPException(
             status_code=422,
-            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not a residential zone. Only residential zones (R1, R2, RD, etc.) are currently supported.",
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' ({parsed.zone_class}) is not supported. Supported zones: {', '.join(sorted(SUPPORTED_ZONE_CLASSES))}.",
         )
 
     # 2. Persist or update parcel

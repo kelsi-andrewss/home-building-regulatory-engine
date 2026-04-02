@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # setback_front, setback_side, setback_rear, height_max, density
 
 _ZONE_TABLE = [
+
     # (zone, lamc_section, min_lot_sf, min_width_ft, front_ft, side_ft, rear_ft, height_ft, density_value, density_unit, front_value_text, rear_value_text)
     ("RE9",   "12.07.01", 9000,  65,  25,  10,  25, 33, 1,    "unit/lot", "20% depth, max 25'", "25% depth, max 25'"),
     ("RE11",  "12.07.01", 11000, 70,  25,  10,  25, 33, 1,    "unit/lot", "20% depth, max 25'", "25% depth, max 25'"),
@@ -37,6 +38,10 @@ _ZONE_TABLE = [
     ("R3",    "12.10",    5000,  50,  15,  5,   15, 45, 800,  "sf",       None, None),
     ("R4",    "12.11",    5000,  50,  15,  5,   15, 45, 400,  "sf",       None, None),
 ]
+
+# Single source of truth for which zone classes the engine supports.
+# Derived from _ZONE_TABLE so adding a row automatically makes it supported.
+SUPPORTED_ZONE_CLASSES: frozenset[str] = frozenset(row[0] for row in _ZONE_TABLE)
 
 
 def _build_base_zone_fragments() -> list[dict]:
