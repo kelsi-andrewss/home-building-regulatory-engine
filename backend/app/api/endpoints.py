@@ -24,6 +24,13 @@ from backend.app.schemas.assessment import (
     ParcelResponse,
     ZoningData,
 )
+from backend.app.schemas.design_constraints import (
+    DesignConstraintResponse,
+    EdgeSetback,
+    HeightEnvelope,
+    MaterialRequirement,
+    PanelFitResponse,
+)
 from backend.app.services.parcel_service import ParcelService
 
 logger = logging.getLogger(__name__)
@@ -419,3 +426,130 @@ async def chat(
             yield f"data: {error_chunk.model_dump_json()}\n\n"
 
     return StreamingResponse(stream_sse(), media_type="text/event-stream")
+
+
+def _extract_constraint_from_result(
+    constraints: list[dict], name: str, default: float
+) -> tuple[float, str, str]:
+    """Extract (value_float, confidence, citation) from serialized Assessment.result constraints.
+
+    Constraint value is stored as string like "20 ft" -- parse the leading float.
+    Returns (default, "unknown", "") if not found or on parse error.
+    """
+    for c in constraints:
+        if c.get("name") == name:
+            try:
+                val = float(c["value"].split()[0])
+                return (val, c.get("confidence", "unknown"), c.get("citation", ""))
+            except (ValueError, IndexError, KeyError, AttributeError):
+                return (default, "unknown", "")
+    return (default, "unknown", "")
+
+
+@router.get("/design-constraints/{assessment_id}", response_model=DesignConstraintResponse)
+async def get_design_constraints(
+    assessment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> DesignConstraintResponse:
+    result = await db.execute(
+        select(Assessment)
+        .where(Assessment.id == assessment_id)
+        .options(
+            selectinload(Assessment.parcel),
+            selectinload(Assessment.zone),
+        )
+    )
+    assessment = result.scalars().first()
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    parcel_geojson = (
+        assessment.parcel.raw_api_response.get("geometry", {})
+        if assessment.parcel.raw_api_response
+        else {}
+    )
+    if not parcel_geojson or not parcel_geojson.get("coordinates"):
+        raise HTTPException(status_code=404, detail="Assessment has no parcel geometry")
+
+    from shapely.geometry import mapping
+
+    from backend.app.engine.geometry_utils import (
+        buffer_inward_per_edge,
+        classify_parcel_edges,
+        parcel_polygon_from_geojson,
+    )
+    from backend.app.engine.panel_fit import check_panel_fit
+
+    parcel_poly = parcel_polygon_from_geojson(parcel_geojson)
+
+    edges = classify_parcel_edges(parcel_poly)
+
+    # Extract setback values from stored assessment result
+    building_types = assessment.result.get("building_types", [])
+    constraints = building_types[0]["constraints"] if building_types else []
+
+    front_val, front_conf, front_cite = _extract_constraint_from_result(
+        constraints, "setback_front", 20.0
+    )
+    side_val, side_conf, side_cite = _extract_constraint_from_result(
+        constraints, "setback_side", 5.0
+    )
+    rear_val, rear_conf, rear_cite = _extract_constraint_from_result(
+        constraints, "setback_rear", 15.0
+    )
+
+    # buffer_inward_per_edge expects keys "front", "side", "rear"
+    buffer_setbacks = {"front": front_val, "side": side_val, "rear": rear_val}
+    envelope_poly = buffer_inward_per_edge(parcel_poly, edges, buffer_setbacks)
+
+    envelope_geojson = mapping(envelope_poly)
+
+    panel_result = check_panel_fit(envelope_geojson, edges, side_val)
+
+    # Extract height
+    height_val, height_conf, height_cite = _extract_constraint_from_result(
+        constraints, "height_max", 33.0
+    )
+
+    # Build per-edge setbacks (4 entries: front, left_side, right_side, rear)
+    per_edge_setbacks = [
+        EdgeSetback(edge="front", setback_ft=front_val, confidence=front_conf, citation=front_cite),
+        EdgeSetback(edge="left_side", setback_ft=side_val, confidence=side_conf, citation=side_cite),
+        EdgeSetback(edge="right_side", setback_ft=side_val, confidence=side_conf, citation=side_cite),
+        EdgeSetback(edge="rear", setback_ft=rear_val, confidence=rear_conf, citation=rear_cite),
+    ]
+
+    height_envelope = HeightEnvelope(
+        max_height_ft=height_val, confidence=height_conf, citation=height_cite
+    )
+
+    # Extract material requirements from constraints
+    material_requirements: list[MaterialRequirement] = []
+    for c in constraints:
+        cname = c.get("name", "")
+        if cname.startswith("material_") or cname == "fire_rating":
+            material_requirements.append(
+                MaterialRequirement(
+                    requirement=c.get("value", ""),
+                    source=c.get("citation", ""),
+                    confidence=c.get("confidence", "unknown"),
+                )
+            )
+
+    panel_fit = PanelFitResponse(
+        feasible=panel_result.feasible,
+        min_side_clearance_ft=panel_result.min_side_clearance,
+        min_envelope_width_ft=panel_result.min_envelope_width,
+        failures=panel_result.failures,
+        mitigations=panel_result.mitigations,
+    )
+
+    return DesignConstraintResponse(
+        assessment_id=assessment.id,
+        parcel_apn=assessment.parcel.apn,
+        envelope_geojson=envelope_geojson,
+        per_edge_setbacks=per_edge_setbacks,
+        height_envelope=height_envelope,
+        material_requirements=material_requirements,
+        panel_fit=panel_fit,
+    )
