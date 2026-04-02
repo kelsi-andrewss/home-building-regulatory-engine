@@ -10,25 +10,8 @@ from backend.app.engine.geometry_utils import (
     derive_lot_dimensions,
     parcel_polygon_from_geojson,
 )
-
-
-def _square_parcel(size: float = 100) -> dict:
-    """Return a GeoJSON polygon for a size x size square parcel."""
-    return {
-        "type": "Polygon",
-        "coordinates": [
-            [[0, 0], [size, 0], [size, size], [0, size], [0, 0]]
-        ],
-    }
-
-
-def _rect_parcel(width: float = 50, depth: float = 120) -> dict:
-    return {
-        "type": "Polygon",
-        "coordinates": [
-            [[0, 0], [width, 0], [width, depth], [0, depth], [0, 0]]
-        ],
-    }
+from backend.tests.conftest import make_rect_parcel as _rect_parcel
+from backend.tests.conftest import make_square_parcel as _square_parcel
 
 
 class TestBufferInward:

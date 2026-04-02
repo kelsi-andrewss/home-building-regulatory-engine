@@ -4,16 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.app.api.endpoints import _extract_constraint_from_result
-
-
-def _square_parcel_geojson(size=100):
-    """Return a GeoJSON polygon dict for a square parcel."""
-    return {
-        "type": "Polygon",
-        "coordinates": [
-            [[0, 0], [size, 0], [size, size], [0, size], [0, 0]]
-        ],
-    }
+from backend.tests.conftest import make_square_parcel as _square_parcel_geojson
 
 
 def _mock_assessment_result(

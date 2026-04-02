@@ -6,23 +6,13 @@ from backend.app.engine.panel_fit import (
     PanelFitResult,
     check_panel_fit,
 )
+from backend.tests.conftest import (
+    make_dummy_classified_edges,
+    make_empty_geojson as _empty_envelope,
+    make_rect_parcel as _rect_envelope,
+)
 
-
-def _rect_envelope(width: float = 50, depth: float = 120) -> dict:
-    """Return a GeoJSON polygon for a width x depth rectangle."""
-    return {
-        "type": "Polygon",
-        "coordinates": [
-            [[0, 0], [width, 0], [width, depth], [0, depth], [0, 0]]
-        ],
-    }
-
-
-def _empty_envelope() -> dict:
-    return {"type": "Polygon", "coordinates": []}
-
-
-_DUMMY_EDGES = {"front": 20.0, "side": 5.0, "rear": 15.0}
+_DUMMY_EDGES = make_dummy_classified_edges()
 
 
 class TestPanelFitSuccess:
