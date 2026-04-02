@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import type { AssessmentResponse } from '../api/client';
+import type { AssessmentResponse, DesignConstraintResponse } from '../api/client';
 import { assessParcel } from '../api/client';
 
 export interface ProjectParams {
@@ -11,6 +11,7 @@ export interface ProjectParams {
 
 export interface AssessmentState {
   assessment: AssessmentResponse | null;
+  designConstraints: DesignConstraintResponse | null;
   projectParams: ProjectParams;
   feedbackMap: Record<string, 'up' | 'down'>;
   isDirty: boolean;
@@ -19,6 +20,7 @@ export interface AssessmentState {
 
 type Action =
   | { type: 'SET_ASSESSMENT'; payload: AssessmentResponse }
+  | { type: 'SET_DESIGN_CONSTRAINTS'; payload: DesignConstraintResponse }
   | { type: 'SET_PARAMS'; payload: Partial<ProjectParams> }
   | { type: 'SET_DIRTY'; payload: boolean }
   | { type: 'SET_FEEDBACK'; payload: { name: string; vote: 'up' | 'down' | null } }
@@ -26,6 +28,7 @@ type Action =
 
 const initialState: AssessmentState = {
   assessment: null,
+  designConstraints: null,
   projectParams: { bedrooms: null, bathrooms: null, sqft: null },
   feedbackMap: {},
   isDirty: false,
@@ -35,7 +38,9 @@ const initialState: AssessmentState = {
 function reducer(state: AssessmentState, action: Action): AssessmentState {
   switch (action.type) {
     case 'SET_ASSESSMENT':
-      return { ...state, assessment: action.payload, loading: false, isDirty: false };
+      return { ...state, assessment: action.payload, designConstraints: null, loading: false, isDirty: false };
+    case 'SET_DESIGN_CONSTRAINTS':
+      return { ...state, designConstraints: action.payload };
     case 'SET_PARAMS':
       return {
         ...state,

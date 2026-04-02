@@ -53,6 +53,42 @@ export interface GeocodingResult {
   coordinates: [number, number];
 }
 
+export interface EdgeSetback {
+  edge: string;
+  setback_ft: number;
+  confidence: Confidence;
+  citation: string;
+}
+
+export interface HeightEnvelope {
+  max_height_ft: number;
+  confidence: Confidence;
+  citation: string;
+}
+
+export interface MaterialRequirement {
+  requirement: string;
+  source: string;
+  confidence: Confidence;
+}
+
+export interface PanelFitResponse {
+  feasible: boolean;
+  min_side_clearance_ft: number;
+  min_envelope_width_ft: number;
+  failures: string[];
+  mitigations: string[];
+}
+
+export interface DesignConstraintResponse {
+  parcel_apn: string;
+  envelope_geojson: any;
+  per_edge_setbacks: EdgeSetback[];
+  height_envelope: HeightEnvelope;
+  material_requirements: MaterialRequirement[];
+  panel_fit: PanelFitResponse;
+}
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -84,6 +120,14 @@ export function getParcel(apn: string): Promise<ParcelData & { zoning: ZoningDat
 
 export function geocodeAddress(query: string): Promise<GeocodingResult[]> {
   return request<GeocodingResult[]>(`${BASE_URL}/geocode?q=${encodeURIComponent(query)}`);
+}
+
+export function fetchDesignConstraints(input: { address?: string; apn?: string }): Promise<DesignConstraintResponse> {
+  return request<DesignConstraintResponse>(`${BASE_URL}/design-constraints`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function* chatFollowup(

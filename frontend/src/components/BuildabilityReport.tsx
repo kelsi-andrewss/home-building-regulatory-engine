@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { AssessmentResponse, BuildingType, Confidence } from '../api/client';
+import type { AssessmentResponse, BuildingType, Confidence, DesignConstraintResponse } from '../api/client';
+import DesignConstraintsPanel from './DesignConstraintsPanel';
 import FeedbackButton from './FeedbackButton';
 import ParameterInputs from './ParameterInputs';
 
@@ -19,10 +20,11 @@ const TYPE_LABELS: Record<BuildingType, string> = {
 interface Props {
   assessment: AssessmentResponse | null;
   selectedType: BuildingType;
+  designConstraints?: DesignConstraintResponse | null;
   onHoverConstraint: (name: string | null) => void;
 }
 
-export default function BuildabilityReport({ assessment, selectedType, onHoverConstraint }: Props) {
+export default function BuildabilityReport({ assessment, selectedType, designConstraints, onHoverConstraint }: Props) {
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set());
 
   if (!assessment) {
@@ -169,6 +171,8 @@ export default function BuildabilityReport({ assessment, selectedType, onHoverCo
           ))}
         </tbody>
       </table>
+
+      {designConstraints && <DesignConstraintsPanel data={designConstraints} />}
     </div>
   );
 }
