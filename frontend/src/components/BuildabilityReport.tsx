@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AssessmentResponse, BuildingType, Confidence, DesignConstraintResponse } from '../api/client';
+import DesignConstraintsPanel from './DesignConstraintsPanel';
 import FeedbackButton from './FeedbackButton';
 import ParameterInputs from './ParameterInputs';
 
@@ -170,6 +171,8 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
           ))}
         </tbody>
       </table>
+
+      {designConstraints && <DesignConstraintsPanel data={designConstraints} />}
     </div>
   );
 }
