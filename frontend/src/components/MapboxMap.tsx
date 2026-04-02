@@ -1,10 +1,11 @@
 import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
-import type { AssessmentResponse } from '../api/client';
+import type { AssessmentResponse, DesignConstraintResponse } from '../api/client';
 
 interface Props {
   assessment: AssessmentResponse | null;
   hoveredConstraint: string | null;
+  designConstraints?: DesignConstraintResponse | null;
 }
 
 function computeBBox(coords: number[][][]): [number, number, number, number] {
@@ -25,7 +26,7 @@ const SETBACK_CONSTRAINTS = new Set([
   'Front Setback', 'Side Setback', 'Rear Setback',
 ]);
 
-export default function MapboxMap({ assessment, hoveredConstraint }: Props) {
+export default function MapboxMap({ assessment, hoveredConstraint, designConstraints }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapReady = useRef(false);
