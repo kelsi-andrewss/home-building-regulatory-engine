@@ -3,6 +3,11 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp compatible with asyncpg's 'timestamp without time zone'."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -192,7 +197,7 @@ async def assess(
             existing_units=parcel_data.existing_units,
             existing_sqft=parcel_data.existing_sqft,
             raw_api_response={"geometry": parcel_data.geometry},
-            fetched_at=datetime.now(UTC),
+            fetched_at=_utcnow(),
         )
         db.add(parcel_row)
         await db.flush()
@@ -215,7 +220,7 @@ async def assess(
             general_plan_land_use=zoning.general_plan_land_use,
             specific_plan_name=zoning.specific_plan,
             historic_overlay=zoning.hpoz,
-            fetched_at=datetime.now(UTC),
+            fetched_at=_utcnow(),
         )
         db.add(zone_row)
         await db.flush()
@@ -308,7 +313,7 @@ async def get_parcel(
     )
     parcel_row = result.scalars().first()
 
-    now = datetime.now(UTC)
+    now = _utcnow()
 
     if parcel_row and parcel_row.fetched_at and (now - parcel_row.fetched_at) < CACHE_TTL:
         zone_row = parcel_row.zones[0] if parcel_row.zones else None
@@ -465,7 +470,7 @@ async def get_design_constraints(
             existing_units=parcel_data.existing_units,
             existing_sqft=parcel_data.existing_sqft,
             raw_api_response={"geometry": parcel_data.geometry},
-            fetched_at=datetime.now(UTC),
+            fetched_at=_utcnow(),
         )
         db.add(parcel_row)
         await db.flush()
@@ -488,7 +493,7 @@ async def get_design_constraints(
             general_plan_land_use=zoning.general_plan_land_use,
             specific_plan_name=zoning.specific_plan,
             historic_overlay=zoning.hpoz,
-            fetched_at=datetime.now(UTC),
+            fetched_at=_utcnow(),
         )
         db.add(zone_row)
         await db.flush()
