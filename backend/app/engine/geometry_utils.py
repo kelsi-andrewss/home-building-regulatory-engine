@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from shapely.geometry import mapping, shape
+import math
+
+from shapely.geometry import LineString, Point, mapping, shape
 from shapely.geometry.polygon import Polygon
 
 
@@ -57,3 +59,194 @@ def derive_lot_dimensions(parcel_geometry: dict) -> dict:
     depth = max(edge1, edge2)
 
     return {"width": width, "depth": depth}
+
+
+def _edge_direction(p1: tuple, p2: tuple) -> tuple[float, float]:
+    dx = p2[0] - p1[0]
+    dy = p2[1] - p1[1]
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return (0.0, 0.0)
+    return (dx / length, dy / length)
+
+
+def _edge_length(p1: tuple, p2: tuple) -> float:
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+
+
+def _avg_y(p1: tuple, p2: tuple) -> float:
+    return (p1[1] + p2[1]) / 2.0
+
+
+def classify_parcel_edges(
+    parcel_poly: Polygon,
+) -> dict[str, list[LineString]]:
+    """Classify parcel boundary edges as front, rear, or side using MBR frontage heuristic.
+
+    MVP simplification: without street-adjacency data, assign the short MBR edge with
+    the lowest y-coordinate as front (assumes south-facing parcel).
+
+    Returns dict with keys "front", "rear", "side", each mapping to a list of LineStrings.
+    """
+    mbr = parcel_poly.minimum_rotated_rectangle
+    mbr_coords = list(mbr.exterior.coords)[:4]
+
+    # Two pairs of opposite edges
+    edge01 = (mbr_coords[0], mbr_coords[1])
+    edge12 = (mbr_coords[1], mbr_coords[2])
+    edge23 = (mbr_coords[2], mbr_coords[3])
+    edge30 = (mbr_coords[3], mbr_coords[0])
+
+    len_01 = _edge_length(*edge01)
+    len_12 = _edge_length(*edge12)
+
+    # Pair A = (edge01, edge23), Pair B = (edge12, edge30)
+    if len_01 <= len_12:
+        # Pair A is shorter -> front/rear; Pair B is longer -> sides
+        short_pair = (edge01, edge23)
+        long_pair = (edge12, edge30)
+    else:
+        short_pair = (edge12, edge30)
+        long_pair = (edge01, edge23)
+
+    # Front = short edge with lowest average y
+    if _avg_y(*short_pair[0]) <= _avg_y(*short_pair[1]):
+        front_mbr_edge, rear_mbr_edge = short_pair
+    else:
+        rear_mbr_edge, front_mbr_edge = short_pair
+
+    side_mbr_edges = long_pair
+
+    # Compute normalized directions for each MBR reference edge
+    front_dir = _edge_direction(*front_mbr_edge)
+    rear_dir = _edge_direction(*rear_mbr_edge)
+    side_dirs = [_edge_direction(*e) for e in side_mbr_edges]
+
+    # Classify actual parcel edges by most-parallel MBR edge
+    result: dict[str, list[LineString]] = {"front": [], "rear": [], "side": []}
+    coords = list(parcel_poly.exterior.coords)
+
+    for i in range(len(coords) - 1):
+        p1, p2 = coords[i], coords[i + 1]
+        if _edge_length(p1, p2) < 1e-10:
+            continue
+
+        parcel_dir = _edge_direction(p1, p2)
+        ls = LineString([p1, p2])
+
+        # Dot product with each MBR reference direction (absolute value for parallel check)
+        dot_front = abs(parcel_dir[0] * front_dir[0] + parcel_dir[1] * front_dir[1])
+        dot_rear = abs(parcel_dir[0] * rear_dir[0] + parcel_dir[1] * rear_dir[1])
+        dot_side = max(
+            abs(parcel_dir[0] * sd[0] + parcel_dir[1] * sd[1])
+            for sd in side_dirs
+        )
+
+        best = max(dot_front, dot_rear, dot_side)
+        if best == dot_side:
+            result["side"].append(ls)
+        elif best == dot_front:
+            # Disambiguate front vs rear by proximity: use midpoint y
+            edge_mid_y = _avg_y(p1, p2)
+            front_mid_y = _avg_y(*front_mbr_edge)
+            rear_mid_y = _avg_y(*rear_mbr_edge)
+            if abs(edge_mid_y - front_mid_y) <= abs(edge_mid_y - rear_mid_y):
+                result["front"].append(ls)
+            else:
+                result["rear"].append(ls)
+        else:
+            edge_mid_y = _avg_y(p1, p2)
+            front_mid_y = _avg_y(*front_mbr_edge)
+            rear_mid_y = _avg_y(*rear_mbr_edge)
+            if abs(edge_mid_y - rear_mid_y) <= abs(edge_mid_y - front_mid_y):
+                result["rear"].append(ls)
+            else:
+                result["front"].append(ls)
+
+    return result
+
+
+def buffer_inward_per_edge(
+    parcel_poly: Polygon,
+    classified_edges: dict[str, list[LineString]],
+    setbacks: dict[str, float],
+) -> Polygon:
+    """Compute buildable envelope using per-edge setback distances.
+
+    Uses slab intersection: for each edge, offset inward by the setback distance,
+    build a large slab polygon on the interior side, and intersect with the running result.
+
+    Returns Shapely Polygon of buildable envelope (empty Polygon if setbacks consume parcel).
+    """
+    result = parcel_poly
+    margin = 10000.0
+
+    for edge_class in ("front", "rear", "side"):
+        d = setbacks.get(edge_class, 0.0)
+        if d == 0:
+            continue
+
+        for edge in classified_edges.get(edge_class, []):
+            p1, p2 = edge.coords[0], edge.coords[1]
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-10:
+                continue
+
+            # Normalized edge direction
+            ex, ey = dx / length, dy / length
+
+            # Two candidate normals
+            n1 = (-ey, ex)
+            n2 = (ey, -ex)
+
+            # Determine inward normal: test which normal points toward parcel interior
+            mid_x = (p1[0] + p2[0]) / 2.0
+            mid_y = (p1[1] + p2[1]) / 2.0
+            eps = 0.1
+            test1 = Point(mid_x + eps * n1[0], mid_y + eps * n1[1])
+            test2 = Point(mid_x + eps * n2[0], mid_y + eps * n2[1])
+
+            if parcel_poly.contains(test1):
+                inward = n1
+            elif parcel_poly.contains(test2):
+                inward = n2
+            else:
+                # Edge might be on boundary; try larger eps
+                test1 = Point(mid_x + 1.0 * n1[0], mid_y + 1.0 * n1[1])
+                if parcel_poly.contains(test1):
+                    inward = n1
+                else:
+                    inward = n2
+
+            # Translate edge inward by setback distance
+            offset_p1 = (p1[0] + d * inward[0], p1[1] + d * inward[1])
+            offset_p2 = (p2[0] + d * inward[0], p2[1] + d * inward[1])
+
+            # Build slab: extend setback line far along edge direction, then extend inward
+            slab_coords = [
+                (offset_p1[0] - margin * ex, offset_p1[1] - margin * ey),
+                (offset_p2[0] + margin * ex, offset_p2[1] + margin * ey),
+                (offset_p2[0] + margin * ex + margin * inward[0],
+                 offset_p2[1] + margin * ey + margin * inward[1]),
+                (offset_p1[0] - margin * ex + margin * inward[0],
+                 offset_p1[1] - margin * ey + margin * inward[1]),
+            ]
+            slab = Polygon(slab_coords)
+
+            result = result.intersection(slab)
+
+            if result.is_empty:
+                return Polygon()
+
+    if result.is_empty or not result.is_valid:
+        return Polygon()
+
+    if result.geom_type == "MultiPolygon":
+        result = max(result.geoms, key=lambda g: g.area)
+
+    if result.geom_type != "Polygon":
+        return Polygon()
+
+    return result

@@ -1,8 +1,12 @@
 import pytest
 
+from shapely.geometry.polygon import Polygon
+
 from backend.app.engine.geometry_utils import (
     buffer_inward,
+    buffer_inward_per_edge,
     calculate_buildable_area,
+    classify_parcel_edges,
     derive_lot_dimensions,
     parcel_polygon_from_geojson,
 )
@@ -88,3 +92,89 @@ class TestDeriveLotDimensions:
         dims = derive_lot_dimensions(geojson)
         assert abs(dims["width"] - 100) < 0.1
         assert abs(dims["depth"] - 100) < 0.1
+
+
+class TestClassifyParcelEdges:
+    def test_rectangular_parcel_classification(self):
+        """50x120 rect parcel: short edges (50') = front/rear, long edges (120') = side."""
+        poly = parcel_polygon_from_geojson(_rect_parcel(50, 120))
+        edges = classify_parcel_edges(poly)
+
+        assert "front" in edges
+        assert "rear" in edges
+        assert "side" in edges
+        assert len(edges["front"]) > 0
+        assert len(edges["rear"]) > 0
+        assert len(edges["side"]) > 0
+
+        # Total classified edges should equal number of boundary segments
+        total = len(edges["front"]) + len(edges["rear"]) + len(edges["side"])
+        n_boundary_segments = len(list(poly.exterior.coords)) - 1
+        assert total == n_boundary_segments
+
+    def test_square_parcel_classification(self):
+        """100x100 square: ambiguous but should still produce valid output with all keys."""
+        poly = parcel_polygon_from_geojson(_square_parcel(100))
+        edges = classify_parcel_edges(poly)
+
+        assert "front" in edges
+        assert "rear" in edges
+        assert "side" in edges
+        # All edges should be accounted for
+        total = len(edges["front"]) + len(edges["rear"]) + len(edges["side"])
+        n_boundary_segments = len(list(poly.exterior.coords)) - 1
+        assert total == n_boundary_segments
+
+    def test_all_edges_accounted_for(self):
+        """Every boundary segment of the parcel should appear in exactly one class."""
+        for geojson_fn in [lambda: _square_parcel(80), lambda: _rect_parcel(60, 150)]:
+            geojson = geojson_fn()
+            poly = parcel_polygon_from_geojson(geojson)
+            edges = classify_parcel_edges(poly)
+
+            total = len(edges["front"]) + len(edges["rear"]) + len(edges["side"])
+            n_boundary_segments = len(list(poly.exterior.coords)) - 1
+            assert total == n_boundary_segments
+
+
+class TestBufferInwardPerEdge:
+    def test_nonuniform_setbacks_rectangular(self):
+        """50x120 rect with front=20, side=5, rear=15. Expected ~40*85 = 3400 sf."""
+        poly = parcel_polygon_from_geojson(_rect_parcel(50, 120))
+        edges = classify_parcel_edges(poly)
+        result = buffer_inward_per_edge(poly, edges, {"front": 20, "side": 5, "rear": 15})
+
+        assert not result.is_empty
+        area = result.area
+        assert 3300 < area < 3500, f"Expected ~3400 sf, got {area}"
+
+    def test_uniform_setbacks_matches_buffer_inward(self):
+        """100x100 square with 10/10/10: per-edge result should be close to uniform buffer."""
+        poly = parcel_polygon_from_geojson(_square_parcel(100))
+        edges = classify_parcel_edges(poly)
+        per_edge_result = buffer_inward_per_edge(poly, edges, {"front": 10, "side": 10, "rear": 10})
+
+        uniform_result = buffer_inward(poly, front_setback=10, side_setback=10, rear_setback=10)
+        uniform_area = calculate_buildable_area(uniform_result)
+
+        per_edge_area = per_edge_result.area
+        # Both should be close to 6400 sf; allow 5% tolerance
+        assert abs(per_edge_area - uniform_area) / uniform_area < 0.05, (
+            f"Per-edge area {per_edge_area} vs uniform area {uniform_area}"
+        )
+
+    def test_setbacks_consume_parcel(self):
+        """40x40 parcel with 25' setbacks on all sides -> empty polygon."""
+        poly = parcel_polygon_from_geojson(_square_parcel(40))
+        edges = classify_parcel_edges(poly)
+        result = buffer_inward_per_edge(poly, edges, {"front": 25, "side": 25, "rear": 25})
+
+        assert result.is_empty
+
+    def test_returns_polygon_type(self):
+        """Result should be a Shapely Polygon, not a GeoJSON dict."""
+        poly = parcel_polygon_from_geojson(_rect_parcel(50, 120))
+        edges = classify_parcel_edges(poly)
+        result = buffer_inward_per_edge(poly, edges, {"front": 20, "side": 5, "rear": 15})
+
+        assert isinstance(result, Polygon)
