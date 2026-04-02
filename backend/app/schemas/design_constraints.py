@@ -1,7 +1,17 @@
-import uuid
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
+
+class DesignConstraintRequest(BaseModel):
+    address: str | None = None
+    apn: str | None = None
+
+    @model_validator(mode="after")
+    def require_address_or_apn(self) -> "DesignConstraintRequest":
+        if not self.address and not self.apn:
+            raise ValueError("At least one of address or apn must be provided")
+        return self
 
 
 class EdgeSetback(BaseModel):
@@ -32,7 +42,6 @@ class PanelFitResponse(BaseModel):
 
 
 class DesignConstraintResponse(BaseModel):
-    assessment_id: uuid.UUID
     parcel_apn: str
     envelope_geojson: dict
     per_edge_setbacks: list[EdgeSetback]

@@ -25,6 +25,7 @@ from backend.app.schemas.assessment import (
     ZoningData,
 )
 from backend.app.schemas.design_constraints import (
+    DesignConstraintRequest,
     DesignConstraintResponse,
     EdgeSetback,
     HeightEnvelope,
@@ -428,48 +429,126 @@ async def chat(
     return StreamingResponse(stream_sse(), media_type="text/event-stream")
 
 
-def _extract_constraint_from_result(
-    constraints: list[dict], name: str, default: float
-) -> tuple[float, str, str]:
-    """Extract (value_float, confidence, citation) from serialized Assessment.result constraints.
-
-    Constraint value is stored as string like "20 ft" -- parse the leading float.
-    Returns (default, "unknown", "") if not found or on parse error.
-    """
-    for c in constraints:
-        if c.get("name") == name:
-            try:
-                val = float(c["value"].split()[0])
-                return (val, c.get("confidence", "unknown"), c.get("citation", ""))
-            except (ValueError, IndexError, KeyError, AttributeError):
-                return (default, "unknown", "")
-    return (default, "unknown", "")
-
-
-@router.get("/design-constraints/{assessment_id}", response_model=DesignConstraintResponse)
+@router.post("/design-constraints", response_model=DesignConstraintResponse)
 async def get_design_constraints(
-    assessment_id: uuid.UUID,
+    req: DesignConstraintRequest,
     db: AsyncSession = Depends(get_db),
+    parcel_svc: ParcelService = Depends(_parcel_service),
+    resolver: ConstraintResolver = Depends(_constraint_resolver),
 ) -> DesignConstraintResponse:
+    # 1. Parcel lookup
+    try:
+        if req.address:
+            parcel_data = await parcel_svc.lookup_by_address(req.address)
+        else:
+            parcel_data = await parcel_svc.lookup_by_address(req.apn)
+    except Exception as exc:
+        logger.error("ParcelService lookup failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Upstream lookup failed: {exc}")
+
+    if parcel_data is None:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+
+    # 2. Persist or update parcel
+    result = await db.execute(select(Parcel).where(Parcel.apn == parcel_data.apn))
+    parcel_row = result.scalars().first()
+    if not parcel_row:
+        parcel_row = Parcel(
+            apn=parcel_data.apn,
+            address=parcel_data.address,
+            lot_area_sf=parcel_data.lot_area_sf,
+            year_built=parcel_data.year_built,
+            existing_units=parcel_data.existing_units,
+            existing_sqft=parcel_data.existing_sqft,
+            raw_api_response={"geometry": parcel_data.geometry},
+            fetched_at=datetime.utcnow(),
+        )
+        db.add(parcel_row)
+        await db.flush()
+
+    # 3. Persist or update zone
+    zoning = parcel_data.zoning
     result = await db.execute(
-        select(Assessment)
-        .where(Assessment.id == assessment_id)
-        .options(
-            selectinload(Assessment.parcel),
-            selectinload(Assessment.zone),
+        select(Zone).where(
+            Zone.parcel_id == parcel_row.id,
+            Zone.zone_complete == zoning.zone_complete,
         )
     )
-    assessment = result.scalars().first()
-    if not assessment:
-        raise HTTPException(status_code=404, detail="Assessment not found")
+    zone_row = result.scalars().first()
+    if not zone_row:
+        zone_row = Zone(
+            parcel_id=parcel_row.id,
+            zone_complete=zoning.zone_complete,
+            zone_class=zoning.zone_class,
+            height_district=parse_zone(zoning.zone_complete).height_district,
+            general_plan_land_use=zoning.general_plan_land_use,
+            specific_plan_name=zoning.specific_plan,
+            historic_overlay=zoning.hpoz,
+            fetched_at=datetime.utcnow(),
+        )
+        db.add(zone_row)
+        await db.flush()
 
-    parcel_geojson = (
-        assessment.parcel.raw_api_response.get("geometry", {})
-        if assessment.parcel.raw_api_response
-        else {}
+    # 4. Run rule engine
+    parsed_zone = parse_zone(zone_row.zone_complete)
+    parcel_dict = {
+        "lot_area_sf": parcel_row.lot_area_sf or 0,
+        "geometry": parcel_data.geometry,
+    }
+
+    from backend.app.db.models import RuleFragment
+
+    frag_result = await db.execute(select(RuleFragment))
+    db_fragments = frag_result.scalars().all()
+    rule_fragments = [
+        {
+            "constraint_type": f.constraint_type,
+            "value": f.value,
+            "unit": f.unit,
+            "zone_applicability": f.zone_applicability,
+            "specific_plan": f.specific_plan,
+            "overrides_base_zone": f.overrides_base_zone,
+            "source_document": f.source_document,
+            "value_text": f.value_text or "",
+            "extraction_reasoning": f.extraction_reasoning,
+        }
+        for f in db_fragments
+    ]
+
+    resolved = resolver.resolve(
+        parsed_zone=parsed_zone,
+        parcel_data=parcel_dict,
+        rule_fragments=rule_fragments,
+        specific_plan=zone_row.specific_plan_name,
     )
+
+    # 5. Extract constraint values directly from resolved constraints
+    from backend.app.engine.rule_engine import _get_constraint_value
+
+    # Use SFH constraints (first building type)
+    sfh_constraints = resolved.building_types[0].constraints if resolved.building_types else []
+
+    front_val = _get_constraint_value(sfh_constraints, "setback_front", 20.0)
+    side_val = _get_constraint_value(sfh_constraints, "setback_side", 5.0)
+    rear_val = _get_constraint_value(sfh_constraints, "setback_rear", 15.0)
+    height_val = _get_constraint_value(sfh_constraints, "height_max", 33.0)
+
+    # Build confidence/citation lookup from resolved constraints
+    def _constraint_meta(constraints, name):
+        for c in constraints:
+            if c.constraint_type == name:
+                return c.confidence.value, c.citation
+        return "unknown", ""
+
+    front_conf, front_cite = _constraint_meta(sfh_constraints, "setback_front")
+    side_conf, side_cite = _constraint_meta(sfh_constraints, "setback_side")
+    rear_conf, rear_cite = _constraint_meta(sfh_constraints, "setback_rear")
+    height_conf, height_cite = _constraint_meta(sfh_constraints, "height_max")
+
+    # 6. Edge geometry + envelope
+    parcel_geojson = parcel_data.geometry
     if not parcel_geojson or not parcel_geojson.get("coordinates"):
-        raise HTTPException(status_code=404, detail="Assessment has no parcel geometry")
+        raise HTTPException(status_code=404, detail="Parcel has no geometry")
 
     from shapely.geometry import mapping
 
@@ -481,37 +560,16 @@ async def get_design_constraints(
     from backend.app.engine.panel_fit import check_panel_fit
 
     parcel_poly = parcel_polygon_from_geojson(parcel_geojson)
-
     edges = classify_parcel_edges(parcel_poly)
 
-    # Extract setback values from stored assessment result
-    building_types = assessment.result.get("building_types", [])
-    constraints = building_types[0]["constraints"] if building_types else []
-
-    front_val, front_conf, front_cite = _extract_constraint_from_result(
-        constraints, "setback_front", 20.0
-    )
-    side_val, side_conf, side_cite = _extract_constraint_from_result(
-        constraints, "setback_side", 5.0
-    )
-    rear_val, rear_conf, rear_cite = _extract_constraint_from_result(
-        constraints, "setback_rear", 15.0
-    )
-
-    # buffer_inward_per_edge expects keys "front", "side", "rear"
     buffer_setbacks = {"front": front_val, "side": side_val, "rear": rear_val}
     envelope_poly = buffer_inward_per_edge(parcel_poly, edges, buffer_setbacks)
-
     envelope_geojson = mapping(envelope_poly)
 
+    # 7. Panel fit
     panel_result = check_panel_fit(envelope_geojson, edges, side_val)
 
-    # Extract height
-    height_val, height_conf, height_cite = _extract_constraint_from_result(
-        constraints, "height_max", 33.0
-    )
-
-    # Build per-edge setbacks (4 entries: front, left_side, right_side, rear)
+    # 8. Build response
     per_edge_setbacks = [
         EdgeSetback(edge="front", setback_ft=front_val, confidence=front_conf, citation=front_cite),
         EdgeSetback(edge="left_side", setback_ft=side_val, confidence=side_conf, citation=side_cite),
@@ -523,16 +581,15 @@ async def get_design_constraints(
         max_height_ft=height_val, confidence=height_conf, citation=height_cite
     )
 
-    # Extract material requirements from constraints
+    # Extract material requirements from resolved constraints
     material_requirements: list[MaterialRequirement] = []
-    for c in constraints:
-        cname = c.get("name", "")
-        if cname.startswith("material_") or cname == "fire_rating":
+    for c in sfh_constraints:
+        if c.constraint_type.startswith("material_") or c.constraint_type == "fire_rating":
             material_requirements.append(
                 MaterialRequirement(
-                    requirement=c.get("value", ""),
-                    source=c.get("citation", ""),
-                    confidence=c.get("confidence", "unknown"),
+                    requirement=f"{c.value} {c.unit}",
+                    source=c.citation,
+                    confidence=c.confidence.value,
                 )
             )
 
@@ -545,8 +602,7 @@ async def get_design_constraints(
     )
 
     return DesignConstraintResponse(
-        assessment_id=assessment.id,
-        parcel_apn=assessment.parcel.apn,
+        parcel_apn=parcel_data.apn,
         envelope_geojson=envelope_geojson,
         per_edge_setbacks=per_edge_setbacks,
         height_envelope=height_envelope,
