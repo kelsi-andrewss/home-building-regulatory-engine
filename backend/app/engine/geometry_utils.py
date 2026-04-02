@@ -2,8 +2,34 @@ from __future__ import annotations
 
 import math
 
+from pyproj import Transformer
 from shapely.geometry import LineString, Point, mapping, shape
 from shapely.geometry.polygon import Polygon
+from shapely.ops import transform
+
+# LA County uses EPSG:2229 (NAD83 California Zone 5, US feet)
+_to_2229 = Transformer.from_crs("EPSG:4326", "EPSG:2229", always_xy=True).transform
+_to_4326 = Transformer.from_crs("EPSG:2229", "EPSG:4326", always_xy=True).transform
+
+
+def _is_wgs84(poly: Polygon) -> bool:
+    """Detect WGS84 coordinates. LA County parcels have lng ~ -118, lat ~ 34.
+    EPSG:2229 (feet) coordinates are in the millions for x, thousands for y.
+    Test fixtures use small positive coordinates (0-150 range).
+    Key signal: real WGS84 parcels in the Western hemisphere have negative x (longitude).
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    return minx < 0 and -180 <= minx and -90 <= miny <= 90
+
+
+def _project_to_feet(poly: Polygon) -> Polygon:
+    """Project WGS84 polygon to EPSG:2229 (feet) for LA County."""
+    return transform(_to_2229, poly)
+
+
+def _project_to_wgs84(poly: Polygon) -> Polygon:
+    """Project EPSG:2229 polygon back to WGS84."""
+    return transform(_to_4326, poly)
 
 
 def parcel_polygon_from_geojson(geojson: dict) -> Polygon:
@@ -20,21 +46,25 @@ def buffer_inward(
     """Compute buildable envelope by buffering inward from parcel edges.
 
     MVP simplification: use min(front, side, rear) as uniform negative buffer.
-    This is conservative (underestimates buildable area) but geometrically correct.
+    Projects to EPSG:2229 (feet) for LA County parcels before buffering.
 
     Returns GeoJSON dict of the buildable envelope polygon.
     Returns empty GeoJSON polygon if setbacks consume entire parcel.
     """
-    min_setback = min(front_setback, side_setback, rear_setback)
+    needs_proj = _is_wgs84(parcel_polygon)
+    work_poly = _project_to_feet(parcel_polygon) if needs_proj else parcel_polygon
 
-    result = parcel_polygon.buffer(-min_setback)
+    min_setback = min(front_setback, side_setback, rear_setback)
+    result = work_poly.buffer(-min_setback)
 
     if result.is_empty or not result.is_valid:
         return {"type": "Polygon", "coordinates": []}
 
-    # buffer can return MultiPolygon in edge cases; take largest
     if result.geom_type == "MultiPolygon":
         result = max(result.geoms, key=lambda g: g.area)
+
+    if needs_proj:
+        result = _project_to_wgs84(result)
 
     return mapping(result)
 
@@ -83,12 +113,19 @@ def classify_parcel_edges(
 ) -> dict[str, list[LineString]]:
     """Classify parcel boundary edges as front, rear, or side using MBR frontage heuristic.
 
+    Projects to EPSG:2229 (feet) for accurate MBR edge length comparison, then
+    maps classification back to original WGS84 edges.
+
     MVP simplification: without street-adjacency data, assign the short MBR edge with
     the lowest y-coordinate as front (assumes south-facing parcel).
 
-    Returns dict with keys "front", "rear", "side", each mapping to a list of LineStrings.
+    Returns dict with keys "front", "rear", "side", each mapping to a list of LineStrings
+    in the original CRS.
     """
-    mbr = parcel_poly.minimum_rotated_rectangle
+    needs_proj = _is_wgs84(parcel_poly)
+    work_poly = _project_to_feet(parcel_poly) if needs_proj else parcel_poly
+
+    mbr = work_poly.minimum_rotated_rectangle
     mbr_coords = list(mbr.exterior.coords)[:4]
 
     # Two pairs of opposite edges
@@ -123,16 +160,19 @@ def classify_parcel_edges(
     side_dirs = [_edge_direction(*e) for e in side_mbr_edges]
 
     # Classify actual parcel edges by most-parallel MBR edge
+    # Work in projected coords for classification, return edges in original CRS
     result: dict[str, list[LineString]] = {"front": [], "rear": [], "side": []}
-    coords = list(parcel_poly.exterior.coords)
+    work_coords = list(work_poly.exterior.coords)
+    orig_coords = list(parcel_poly.exterior.coords)
 
-    for i in range(len(coords) - 1):
-        p1, p2 = coords[i], coords[i + 1]
+    for i in range(len(work_coords) - 1):
+        p1, p2 = work_coords[i], work_coords[i + 1]
         if _edge_length(p1, p2) < 1e-10:
             continue
 
         parcel_dir = _edge_direction(p1, p2)
-        ls = LineString([p1, p2])
+        # Build LineString from original CRS coordinates
+        ls = LineString([orig_coords[i], orig_coords[i + 1]])
 
         # Dot product with each MBR reference direction (absolute value for parallel check)
         dot_front = abs(parcel_dir[0] * front_dir[0] + parcel_dir[1] * front_dir[1])
@@ -173,12 +213,25 @@ def buffer_inward_per_edge(
 ) -> Polygon:
     """Compute buildable envelope using per-edge setback distances.
 
+    Projects to EPSG:2229 (feet) for LA County parcels before applying foot-based setbacks.
     Uses slab intersection: for each edge, offset inward by the setback distance,
     build a large slab polygon on the interior side, and intersect with the running result.
 
-    Returns Shapely Polygon of buildable envelope (empty Polygon if setbacks consume parcel).
+    Returns Shapely Polygon of buildable envelope in original CRS (empty Polygon if
+    setbacks consume parcel).
     """
-    result = parcel_poly
+    needs_proj = _is_wgs84(parcel_poly)
+    work_poly = _project_to_feet(parcel_poly) if needs_proj else parcel_poly
+
+    # Project edges to same CRS as work_poly
+    if needs_proj:
+        work_edges: dict[str, list[LineString]] = {}
+        for cls, edges in classified_edges.items():
+            work_edges[cls] = [transform(_to_2229, e) for e in edges]
+    else:
+        work_edges = classified_edges
+
+    result = work_poly
     margin = 10000.0
 
     for edge_class in ("front", "rear", "side"):
@@ -186,7 +239,7 @@ def buffer_inward_per_edge(
         if d == 0:
             continue
 
-        for edge in classified_edges.get(edge_class, []):
+        for edge in work_edges.get(edge_class, []):
             p1, p2 = edge.coords[0], edge.coords[1]
             dx = p2[0] - p1[0]
             dy = p2[1] - p1[1]
@@ -208,14 +261,14 @@ def buffer_inward_per_edge(
             test1 = Point(mid_x + eps * n1[0], mid_y + eps * n1[1])
             test2 = Point(mid_x + eps * n2[0], mid_y + eps * n2[1])
 
-            if parcel_poly.contains(test1):
+            if work_poly.contains(test1):
                 inward = n1
-            elif parcel_poly.contains(test2):
+            elif work_poly.contains(test2):
                 inward = n2
             else:
                 # Edge might be on boundary; try larger eps
                 test1 = Point(mid_x + 1.0 * n1[0], mid_y + 1.0 * n1[1])
-                if parcel_poly.contains(test1):
+                if work_poly.contains(test1):
                     inward = n1
                 else:
                     inward = n2
@@ -248,5 +301,8 @@ def buffer_inward_per_edge(
 
     if result.geom_type != "Polygon":
         return Polygon()
+
+    if needs_proj:
+        result = _project_to_wgs84(result)
 
     return result
