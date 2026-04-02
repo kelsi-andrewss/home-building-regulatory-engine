@@ -34,12 +34,20 @@ class CAMSClient:
         self.session = session
 
     async def geocode(self, address: str) -> GeocodedLocation:
+        results = await self.geocode_many(address, max_locations=1)
+        if not results:
+            raise GeocodingError(f"No geocoding candidates for: {address}")
+        return results[0]
+
+    async def geocode_many(
+        self, address: str, max_locations: int = 5, min_score: int = 80
+    ) -> list[GeocodedLocation]:
         resp = await self.session.get(
             f"{self.BASE_URL}/findAddressCandidates",
             params={
                 "SingleLine": address,
                 "f": "json",
-                "maxLocations": 1,
+                "maxLocations": max_locations,
                 "outSR": 2229,
             },
             timeout=10.0,
@@ -47,26 +55,17 @@ class CAMSClient:
         resp.raise_for_status()
         data = resp.json()
 
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise GeocodingError(f"No geocoding candidates for: {address}")
-
-        top = candidates[0]
-        score = top["score"]
-        if score < 80:
-            raise GeocodingError(
-                f"Best candidate score {score} below threshold 80 for: {address}"
+        results = []
+        for candidate in data.get("candidates", []):
+            score = candidate["score"]
+            if score < min_score:
+                continue
+            x = candidate["location"]["x"]
+            y = candidate["location"]["y"]
+            lat, lng = reproject_2229_to_4326(x, y)
+            results.append(
+                GeocodedLocation(
+                    x=x, y=y, lat=lat, lng=lng, score=score, address=candidate["address"],
+                )
             )
-
-        x = top["location"]["x"]
-        y = top["location"]["y"]
-        lat, lng = reproject_2229_to_4326(x, y)
-
-        return GeocodedLocation(
-            x=x,
-            y=y,
-            lat=lat,
-            lng=lng,
-            score=score,
-            address=top["address"],
-        )
+        return results

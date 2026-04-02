@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from backend.app.api.admin import router as admin_router
 from backend.app.api.endpoints import router
@@ -14,16 +15,21 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Seed rule fragments on startup
-    async with async_session() as session:
-        try:
-            from backend.app.db.seed_data import seed_all
+    # Create tables if they don't exist
+    from backend.app.db.models import Base
 
-            await seed_all(session)
-            await session.commit()
-        except Exception:
-            logger.exception("Seed data failed (DB may not be ready)")
-            await session.rollback()
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ready")
+
+    # Seed rule fragments on startup — fail hard if this doesn't work,
+    # the app is useless without rule fragments.
+    async with async_session() as session:
+        from backend.app.db.seed_data import seed_all
+
+        await seed_all(session)
+        await session.commit()
 
     yield
 

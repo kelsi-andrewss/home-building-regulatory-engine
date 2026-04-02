@@ -27,7 +27,7 @@ class ParcelRecord:
 
 
 class LACountyClient:
-    BASE_URL = "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0"
+    BASE_URL = "https://cache.gis.lacounty.gov/cache/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0"
 
     def __init__(self, session: httpx.AsyncClient):
         self.session = session
@@ -40,7 +40,7 @@ class LACountyClient:
                 "geometryType": "esriGeometryPoint",
                 "inSR": 4326,
                 "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "APN,AIN,SitusAddress,UseType,YearBuilt1,Units,Bedrooms,Bathrooms,SQFT,Roll_LandValue,Shape_Area",
+                "outFields": "APN,AIN,SitusAddress,UseType,YearBuilt1,Units1,Bedrooms1,Bathrooms1,SQFTmain1,Roll_LandValue,Shape.STArea()",
                 "returnGeometry": "true",
                 "f": "geojson",
             },
@@ -64,11 +64,11 @@ class LACountyClient:
             situs_address=props.get("SitusAddress", ""),
             geometry=feature["geometry"],
             use_type=props.get("UseType"),
-            year_built=props.get("YearBuilt1"),
-            units=props.get("Units"),
-            bedrooms=props.get("Bedrooms"),
-            bathrooms=props.get("Bathrooms"),
-            sqft=props.get("SQFT"),
-            lot_area_sf=props.get("Shape_Area"),
+            year_built=int(yb) if (yb := props.get("YearBuilt1")) else None,
+            units=props.get("Units1"),
+            bedrooms=props.get("Bedrooms1"),
+            bathrooms=props.get("Bathrooms1"),
+            sqft=props.get("SQFTmain1"),
+            lot_area_sf=props.get("Shape.STArea()"),
             land_value=props.get("Roll_LandValue"),
         )

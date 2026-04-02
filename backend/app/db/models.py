@@ -8,7 +8,6 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
@@ -56,9 +55,7 @@ class Parcel(Base):
     zones: Mapped[list["Zone"]] = relationship(back_populates="parcel")
     assessments: Mapped[list["Assessment"]] = relationship(back_populates="parcel")
 
-    __table_args__ = (
-        Index("idx_parcels_geometry", "geometry", postgresql_using="gist"),
-    )
+    # GeoAlchemy2 auto-creates spatial index on geometry columns
 
 
 class Zone(Base):
@@ -136,11 +133,7 @@ class SpecificPlan(Base):
         DateTime, server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (
-        Index(
-            "idx_specific_plans_geometry", "geometry", postgresql_using="gist"
-        ),
-    )
+    # GeoAlchemy2 auto-creates spatial index on geometry columns
 
 
 class Assessment(Base):
@@ -169,10 +162,4 @@ class Assessment(Base):
     parcel: Mapped["Parcel"] = relationship(back_populates="assessments")
     zone: Mapped["Zone"] = relationship(back_populates="assessments")
 
-    __table_args__ = (
-        Index(
-            "idx_assessments_setback_geometry",
-            "setback_geometry",
-            postgresql_using="gist",
-        ),
-    )
+    # GeoAlchemy2 auto-creates spatial index on geometry columns

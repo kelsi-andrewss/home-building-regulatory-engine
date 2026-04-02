@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +36,7 @@ _ZONE_TABLE = [
 
 def _build_base_zone_fragments() -> list[dict]:
     fragments = []
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     for (zone, section, min_lot, min_width, front, side, rear,
          height, density_val, density_unit, front_text, rear_text) in _ZONE_TABLE:
@@ -125,7 +125,7 @@ _HEIGHT_DISTRICTS = [
 
 def _build_height_district_fragments() -> list[dict]:
     fragments = []
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     for hd, sf_height, mf_height, mf_far in _HEIGHT_DISTRICTS:
         base = {
@@ -177,7 +177,7 @@ def _build_height_district_fragments() -> list[dict]:
 # ---- ADU state law rules ----
 
 def _build_adu_fragments() -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     source = "CA Gov. Code \u00a765852.2"
     base = {
         "source_document": source,

@@ -34,14 +34,17 @@ CACHE_TTL = timedelta(hours=24)
 
 
 def _parcel_service() -> ParcelService:
+    import httpx
+
     from backend.app.clients.cams_client import CAMSClient
     from backend.app.clients.lacounty_client import LACountyClient
     from backend.app.clients.navigatela_client import NavigateLAClient
 
+    session = httpx.AsyncClient(timeout=30.0)
     return ParcelService(
-        cams=CAMSClient(),
-        lacounty=LACountyClient(),
-        navigatela=NavigateLAClient(),
+        cams=CAMSClient(session),
+        lacounty=LACountyClient(session),
+        navigatela=NavigateLAClient(session),
     )
 
 
@@ -102,6 +105,50 @@ def _resolved_to_schema(bta) -> BuildingTypeAssessment:
     )
 
 
+@router.get("/geocode")
+async def geocode(q: str):
+    import httpx
+
+    from backend.app.clients.cams_client import CAMSClient
+    from backend.app.clients.lacounty_client import LACountyClient, ParcelNotFoundError
+
+    session = httpx.AsyncClient(timeout=30.0)
+    cams = CAMSClient(session)
+    lacounty = LACountyClient(session)
+
+    try:
+        locations = await cams.geocode_many(q, max_locations=5)
+    except Exception:
+        return []
+
+    import asyncio
+
+    async def enrich(loc):
+        try:
+            parcel = await lacounty.get_parcel_at_point(loc.lat, loc.lng)
+            apn = parcel.apn
+        except ParcelNotFoundError:
+            apn = ""
+        return {
+            "address": loc.address,
+            "apn": apn,
+            "coordinates": [loc.lng, loc.lat],
+        }
+
+    results = await asyncio.gather(*[enrich(loc) for loc in locations])
+    await session.aclose()
+
+    # Deduplicate by APN, drop candidates with no parcel match
+    seen = set()
+    unique = []
+    for r in results:
+        if not r["apn"] or r["apn"] in seen:
+            continue
+        seen.add(r["apn"])
+        unique.append(r)
+    return unique
+
+
 @router.post("/assess", response_model=AssessmentResponse)
 async def assess(
     req: AssessRequest,
@@ -133,7 +180,7 @@ async def assess(
             existing_units=parcel_data.existing_units,
             existing_sqft=parcel_data.existing_sqft,
             raw_api_response={"geometry": parcel_data.geometry},
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.utcnow(),
         )
         db.add(parcel_row)
         await db.flush()
@@ -156,7 +203,7 @@ async def assess(
             general_plan_land_use=zoning.general_plan_land_use,
             specific_plan_name=zoning.specific_plan,
             historic_overlay=zoning.hpoz,
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.utcnow(),
         )
         db.add(zone_row)
         await db.flush()
@@ -249,7 +296,7 @@ async def get_parcel(
     )
     parcel_row = result.scalars().first()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     if parcel_row and parcel_row.fetched_at and (now - parcel_row.fetched_at) < CACHE_TTL:
         zone_row = parcel_row.zones[0] if parcel_row.zones else None

@@ -83,8 +83,8 @@ class NavigateLAClient:
 
         props = features[0]["properties"]
         return LandUseInfo(
-            gplu=props["GPLU"],
-            category=props["Category"],
+            gplu=str(props["GPLU"]),
+            category=str(props["Category"]),
         )
 
     async def get_specific_plan(
