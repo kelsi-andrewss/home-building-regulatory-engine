@@ -195,6 +195,22 @@ async def _assess_inner(req, db, parcel_svc, resolver):
     if parcel_data is None:
         raise HTTPException(status_code=404, detail="Parcel not found")
 
+    # Validate zone is parseable and supported
+    try:
+        parsed = parse_zone(parcel_data.zoning.zone_complete)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not supported: {exc}",
+        )
+
+    _SUPPORTED_PREFIXES = ("RE", "RS", "R1", "R2", "R3", "R4", "R5", "RD")
+    if not any(parsed.zone_class.startswith(p) for p in _SUPPORTED_PREFIXES):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not a residential zone. Only residential zones (R1, R2, RD, etc.) are currently supported.",
+        )
+
     # Persist or update parcel
     result = await db.execute(select(Parcel).where(Parcel.apn == parcel_data.apn))
     parcel_row = result.scalars().first()
@@ -467,6 +483,22 @@ async def get_design_constraints(
 
     if parcel_data is None:
         raise HTTPException(status_code=404, detail="Parcel not found")
+
+    # Validate zone is parseable and supported
+    try:
+        parsed = parse_zone(parcel_data.zoning.zone_complete)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not supported: {exc}",
+        )
+
+    _SUPPORTED_PREFIXES = ("RE", "RS", "R1", "R2", "R3", "R4", "R5", "RD")
+    if not any(parsed.zone_class.startswith(p) for p in _SUPPORTED_PREFIXES):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Zone '{parcel_data.zoning.zone_complete}' is not a residential zone. Only residential zones (R1, R2, RD, etc.) are currently supported.",
+        )
 
     # 2. Persist or update parcel
     result = await db.execute(select(Parcel).where(Parcel.apn == parcel_data.apn))
