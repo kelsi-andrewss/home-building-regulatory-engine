@@ -21,6 +21,18 @@ function computeBBox(coords: number[][][]): [number, number, number, number] {
   return [minLng, minLat, maxLng, maxLat];
 }
 
+function unionBBox(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+): [number, number, number, number] {
+  return [
+    Math.min(a[0], b[0]),
+    Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]),
+    Math.max(a[3], b[3]),
+  ];
+}
+
 const SETBACK_CONSTRAINTS = new Set([
   'front_setback', 'side_setback', 'rear_setback',
   'Front Setback', 'Side Setback', 'Rear Setback',
@@ -54,6 +66,11 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      map.addSource('design-envelope', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
       map.addLayer({
         id: 'parcel-fill',
         type: 'fill',
@@ -61,6 +78,16 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         paint: {
           'fill-color': '#3b82f6',
           'fill-opacity': 0.1,
+        },
+      });
+
+      map.addLayer({
+        id: 'design-envelope-fill',
+        type: 'fill',
+        source: 'design-envelope',
+        paint: {
+          'fill-color': '#f97316',
+          'fill-opacity': 0.15,
         },
       });
 
@@ -82,6 +109,16 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
           'line-color': '#10b981',
           'line-width': 2,
           'line-dasharray': [4, 4],
+        },
+      });
+
+      map.addLayer({
+        id: 'design-envelope-stroke',
+        type: 'line',
+        source: 'design-envelope',
+        paint: {
+          'line-color': '#a855f7',
+          'line-width': 2.5,
         },
       });
 
@@ -120,6 +157,7 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
       (map.getSource('parcel') as mapboxgl.GeoJSONSource)?.setData(empty);
       (map.getSource('setback') as mapboxgl.GeoJSONSource)?.setData(empty);
+      (map.getSource('design-envelope') as mapboxgl.GeoJSONSource)?.setData(empty);
       return;
     }
 
@@ -154,7 +192,11 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       });
     }
 
-    const bbox = computeBBox(assessment.parcel.geometry.coordinates);
+    let bbox = computeBBox(assessment.parcel.geometry.coordinates);
+    if (designConstraints?.envelope_geojson) {
+      const envBBox = computeBBox(designConstraints.envelope_geojson.coordinates);
+      bbox = unionBBox(bbox, envBBox);
+    }
     map.fitBounds(
       [
         [bbox[0], bbox[1]],
@@ -162,7 +204,26 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       ],
       { padding: 80 }
     );
-  }, [assessment]);
+  }, [assessment, designConstraints]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady.current) return;
+
+    const envelopeSource = map.getSource('design-envelope') as mapboxgl.GeoJSONSource;
+    if (!envelopeSource) return;
+
+    if (designConstraints?.envelope_geojson) {
+      const feature: GeoJSON.Feature = {
+        type: 'Feature',
+        geometry: designConstraints.envelope_geojson,
+        properties: {},
+      };
+      envelopeSource.setData({ type: 'FeatureCollection', features: [feature] });
+    } else {
+      envelopeSource.setData({ type: 'FeatureCollection', features: [] });
+    }
+  }, [designConstraints]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -178,9 +239,68 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
   }, [hoveredConstraint]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%', minHeight: '100vh' }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '100vh' }}>
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: '100%' }}
+      />
+      {assessment && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 24,
+            left: 24,
+            zIndex: 2,
+            background: 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(4px)',
+            borderRadius: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            padding: '12px 16px',
+            fontSize: 13,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 16,
+                height: 16,
+                background: '#3b82f61a',
+                border: '2px solid #3b82f6',
+                borderRadius: 2,
+                flexShrink: 0,
+              }}
+            />
+            <span>Parcel Boundary</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 16,
+                height: 0,
+                borderTop: '2px dashed #10b981',
+                flexShrink: 0,
+              }}
+            />
+            <span>Setback Area</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 16,
+                height: 16,
+                background: '#f9731626',
+                border: '2px solid #a855f7',
+                borderRadius: 2,
+                flexShrink: 0,
+              }}
+            />
+            <span>Design Envelope</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
