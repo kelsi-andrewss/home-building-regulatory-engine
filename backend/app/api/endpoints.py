@@ -127,6 +127,7 @@ async def geocode(q: str):
     try:
         locations = await cams.geocode_many(q, max_locations=5)
     except Exception:
+        logger.exception("Geocode failed for query: %s", q)
         return []
 
     import asyncio
@@ -136,6 +137,9 @@ async def geocode(q: str):
             parcel = await lacounty.get_parcel_at_point(loc.lat, loc.lng)
             apn = parcel.apn
         except ParcelNotFoundError:
+            apn = ""
+        except Exception:
+            logger.exception("Parcel lookup failed for %s (%.5f, %.5f)", loc.address, loc.lat, loc.lng)
             apn = ""
         return {
             "address": loc.address,
