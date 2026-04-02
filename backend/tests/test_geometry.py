@@ -10,6 +10,7 @@ from backend.app.engine.geometry_utils import (
     derive_lot_dimensions,
     parcel_polygon_from_geojson,
 )
+from backend.tests.conftest import make_la_parcel_geojson as _la_parcel
 from backend.tests.conftest import make_rect_parcel as _rect_parcel
 from backend.tests.conftest import make_square_parcel as _square_parcel
 
@@ -161,3 +162,63 @@ class TestBufferInwardPerEdge:
         result = buffer_inward_per_edge(poly, edges, {"front": 20, "side": 5, "rear": 15})
 
         assert isinstance(result, Polygon)
+
+
+class TestWGS84Projection:
+    """Tests using real WGS84 coordinates to verify CRS projection works."""
+
+    def test_buffer_inward_wgs84_produces_nonempty(self):
+        """A ~50x120ft LA parcel with 5ft setbacks should produce a non-empty envelope."""
+        poly = parcel_polygon_from_geojson(_la_parcel())
+        result = buffer_inward(poly, front_setback=5, side_setback=5, rear_setback=5)
+
+        assert result["type"] == "Polygon"
+        assert len(result["coordinates"]) > 0
+        assert len(result["coordinates"][0]) > 0
+
+    def test_buffer_inward_wgs84_result_is_wgs84(self):
+        """Buffered result should be back in WGS84 (lng ~ -118, lat ~ 34)."""
+        poly = parcel_polygon_from_geojson(_la_parcel())
+        result = buffer_inward(poly, front_setback=5, side_setback=5, rear_setback=5)
+
+        coords = result["coordinates"][0]
+        for lng, lat in coords:
+            assert -119 < lng < -117, f"lng {lng} not in LA range"
+            assert 33 < lat < 35, f"lat {lat} not in LA range"
+
+    def test_classify_edges_wgs84(self):
+        """Edge classification works on WGS84 parcels, returns WGS84 LineStrings."""
+        poly = parcel_polygon_from_geojson(_la_parcel())
+        edges = classify_parcel_edges(poly)
+
+        assert len(edges["front"]) > 0
+        assert len(edges["side"]) > 0
+        total = len(edges["front"]) + len(edges["rear"]) + len(edges["side"])
+        assert total == len(list(poly.exterior.coords)) - 1
+
+        # Edges should be in WGS84
+        for cls_edges in edges.values():
+            for edge in cls_edges:
+                for coord in edge.coords:
+                    assert -119 < coord[0] < -117
+
+    def test_per_edge_buffer_wgs84_nonempty(self):
+        """Per-edge buffering with R1 setbacks on a WGS84 parcel produces non-empty result."""
+        poly = parcel_polygon_from_geojson(_la_parcel())
+        edges = classify_parcel_edges(poly)
+        result = buffer_inward_per_edge(poly, edges, {"front": 20, "side": 5, "rear": 15})
+
+        assert isinstance(result, Polygon)
+        assert not result.is_empty
+        # Result should be in WGS84
+        minx, miny, maxx, maxy = result.bounds
+        assert -119 < minx < -117
+        assert 33 < miny < 35
+
+    def test_per_edge_buffer_wgs84_smaller_than_parcel(self):
+        """Buffered envelope should be strictly smaller than the original parcel."""
+        poly = parcel_polygon_from_geojson(_la_parcel())
+        edges = classify_parcel_edges(poly)
+        result = buffer_inward_per_edge(poly, edges, {"front": 5, "side": 5, "rear": 5})
+
+        assert result.area < poly.area

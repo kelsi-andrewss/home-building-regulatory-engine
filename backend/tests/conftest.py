@@ -30,3 +30,27 @@ def make_empty_geojson() -> dict:
 def make_dummy_classified_edges() -> dict[str, list[LineString]]:
     """Dummy classified edges matching classify_parcel_edges return type."""
     return {"front": [], "rear": [], "side": []}
+
+
+def make_la_parcel_geojson() -> dict:
+    """A realistic ~50x120ft residential parcel in LA (WGS84 coordinates).
+
+    Located near Vermont Ave, Los Angeles. Approximate rectangle.
+    At LA latitude, 1 degree lng ~ 288,200 ft, 1 degree lat ~ 364,000 ft.
+    50ft wide ~ 0.000173 deg lng, 120ft deep ~ 0.000330 deg lat.
+    """
+    lng, lat = -118.2920, 34.0760
+    w = 0.000173  # ~50ft in lng degrees
+    h = 0.000330  # ~120ft in lat degrees
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [lng, lat],
+                [lng + w, lat],
+                [lng + w, lat + h],
+                [lng, lat + h],
+                [lng, lat],
+            ]
+        ],
+    }
