@@ -174,6 +174,16 @@ async def assess(
     resolver: ConstraintResolver = Depends(_constraint_resolver),
 ) -> AssessmentResponse:
     try:
+        return await _assess_inner(req, db, parcel_svc, resolver)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unhandled error in /assess")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+async def _assess_inner(req, db, parcel_svc, resolver):
+    try:
         if req.address:
             parcel_data = await parcel_svc.lookup_by_address(req.address)
         else:
