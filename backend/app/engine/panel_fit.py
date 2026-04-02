@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from backend.app.engine.geometry_utils import derive_lot_dimensions
+from shapely.geometry import shape
+from shapely.ops import transform
+
+from backend.app.engine.geometry_utils import _is_wgs84, _to_2229, derive_lot_dimensions
 
 # Cover panel delivery constraints
 MIN_SIDE_CLEARANCE_FT = 4.0
@@ -50,7 +53,14 @@ def check_panel_fit(
     if not coords or not coords[0]:
         min_envelope_width = 0.0
     else:
-        dims = derive_lot_dimensions(buildable_envelope)
+        # Project to feet if WGS84 so MBR width is in feet, not degrees
+        envelope_poly = shape(buildable_envelope)
+        if _is_wgs84(envelope_poly):
+            from shapely.geometry import mapping
+            projected = transform(_to_2229, envelope_poly)
+            dims = derive_lot_dimensions(mapping(projected))
+        else:
+            dims = derive_lot_dimensions(buildable_envelope)
         min_envelope_width = dims["width"]
 
     if min_envelope_width < MIN_ENVELOPE_WIDTH_FT:
