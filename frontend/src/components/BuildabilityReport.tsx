@@ -3,6 +3,7 @@ import type { AssessmentResponse, BuildingType, DesignConstraintResponse } from 
 import DesignConstraintsPanel from './DesignConstraintsPanel';
 import FeedbackButton from './FeedbackButton';
 import ParameterInputs from './ParameterInputs';
+import { toTitleCase } from '../utils/format';
 
 const TYPE_LABELS: Record<BuildingType, string> = {
   SFH: 'Single Family Home',
@@ -79,26 +80,29 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <tbody>
                     <tr>
-                      <td style={{ padding: '12px 8px', color: 'var(--text-main)', width: '30%' }}>{c.name}</td>
-                      <td style={{ padding: '12px 8px', color: 'var(--text-main)', width: '25%' }}>{c.value}</td>
-                      <td style={{ padding: '12px 8px' }}>
+                      <td style={{ padding: '14px 8px', color: 'var(--text-main)', width: '30%', fontWeight: 500 }}>
+                        {toTitleCase(c.name)}
+                      </td>
+                      <td style={{ padding: '14px 8px', color: 'var(--text-main)', width: '25%', fontWeight: 600 }}>
+                        {c.value}
+                      </td>
+                      <td style={{ padding: '14px 8px' }}>
                         <span className={`badge badge-confidence-${c.confidence}`}>
                           {c.confidence}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 4px', width: '40px', textAlign: 'center' }}>
+                      <td style={{ padding: '14px 4px', width: '40px', textAlign: 'center' }}>
                         {c.citation && (
                           <button
                             onClick={() => toggleCitation(c.name)}
-                            className="btn-secondary"
-                            style={{ padding: '2px 6px', fontSize: '11px' }}
+                            className={`btn-cite ${expandedCitations.has(c.name) ? 'active' : ''}`}
                             title="Show citation"
                           >
-                            {expandedCitations.has(c.name) ? '\u25B4' : 'cite'}
+                            cite
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '12px 4px', width: '56px', textAlign: 'center' }}>
+                      <td style={{ padding: '14px 4px', width: '56px', textAlign: 'center' }}>
                         <FeedbackButton constraintName={c.name} />
                       </td>
                     </tr>
@@ -106,11 +110,11 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
                       <tr>
                         <td colSpan={5}>
                           <div className="expansion-content">
-                            <div style={{ marginBottom: '4px' }}>
-                              <strong>Citation:</strong> {c.citation}
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong style={{ color: 'var(--text-main)' }}>Citation:</strong> {c.citation}
                             </div>
                             <div>
-                              <strong>Explanation:</strong> {c.explanation}
+                              <strong style={{ color: 'var(--text-main)' }}>Explanation:</strong> {c.explanation}
                             </div>
                           </div>
                         </td>
@@ -128,3 +132,4 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
     </div>
   );
 }
+

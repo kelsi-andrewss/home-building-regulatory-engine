@@ -98,7 +98,11 @@ export default function ChatInterface() {
         title="Open chat"
         aria-label="Open chat"
       >
-        {'\u{1F4AC}'}
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="chat-fab-icon">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <path d="M8 9h8" />
+          <path d="M8 13h5" />
+        </svg>
       </button>
     );
   }
@@ -107,20 +111,27 @@ export default function ChatInterface() {
     <div className="chat-window">
       {/* Header */}
       <div className="chat-header">
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-main)' }}>
-            Regulatory Assistant
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '40px', height: '40px', background: 'var(--primary-light)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
           </div>
-          {assessment && (
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>
-              {assessment.parcel.address}
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+              Regulatory Assistant
             </div>
-          )}
+            {assessment && (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 600 }}>
+                {assessment.parcel.address.split(',')[0]}
+              </div>
+            )}
+          </div>
         </div>
         <button
           onClick={() => setIsOpen(false)}
           className="btn-secondary"
-          style={{ padding: '4px 8px', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ padding: 0, borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', border: 'none', background: 'rgba(0,0,0,0.05)' }}
           aria-label="Close chat"
         >
           &times;
