@@ -9,8 +9,8 @@ import pdfplumber
 
 logger = logging.getLogger(__name__)
 
-# Rough estimate: 1 token ~ 4 chars for English text
-CHARS_PER_TOKEN = 4
+# Rough estimate: 1 token ~ 3.5 chars for English text
+CHARS_PER_TOKEN = 3.5
 
 
 class PdfExtractionError(Exception):
