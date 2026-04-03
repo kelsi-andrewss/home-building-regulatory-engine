@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { DesignConstraintResponse } from '../api/client';
-import FeedbackButton from './FeedbackButton';
 import { toTitleCase } from '../utils/format';
 
 const EDGE_LABELS: Record<string, string> = {
@@ -45,13 +44,12 @@ export default function DesignConstraintsPanel({ data }: Props) {
                 <th>Setback</th>
                 <th>Confidence</th>
                 <th style={{ width: '40px' }}></th>
-                <th style={{ width: '56px' }}></th>
               </tr>
             </thead>
             <tbody>
               {data.per_edge_setbacks.map((setback) => (
                 <tr key={setback.edge}>
-                  <td colSpan={5} style={{ padding: 0 }}>
+                  <td colSpan={4} style={{ padding: 0 }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <tbody>
                         <tr>
@@ -77,13 +75,10 @@ export default function DesignConstraintsPanel({ data }: Props) {
                               </button>
                             )}
                           </td>
-                          <td style={{ padding: '14px 4px', width: '56px', textAlign: 'center' }}>
-                            <FeedbackButton constraintName={`setback_${setback.edge}`} />
-                          </td>
                         </tr>
                         {expandedCitations.has(setback.edge) && (
                           <tr>
-                            <td colSpan={5}>
+                            <td colSpan={4}>
                               <div className="expansion-content">
                                 <strong style={{ color: 'var(--text-main)' }}>Citation:</strong> {setback.citation}
                               </div>
