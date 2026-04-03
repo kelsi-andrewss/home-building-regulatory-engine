@@ -35,7 +35,10 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
-        run: npm ci && VITE_API_BASE_URL=/api npm run build
+        env:
+          VITE_API_BASE_URL: /api
+          VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
+        run: npm ci && npm run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
