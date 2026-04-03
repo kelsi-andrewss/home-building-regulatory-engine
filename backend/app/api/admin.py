@@ -1,14 +1,25 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.config import settings
 from backend.app.db.models import RuleFragment
 from backend.app.db.session import get_db
 
 router = APIRouter(prefix="/api/admin")
 
 
-@router.get("/stats")
+async def verify_admin_key(authorization: str | None = Header(None)) -> None:
+    if settings.admin_api_key is None:
+        raise HTTPException(status_code=401, detail="Admin endpoint disabled")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    token = authorization.removeprefix("Bearer ")
+    if token != settings.admin_api_key:
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+
+
+@router.get("/stats", dependencies=[Depends(verify_admin_key)])
 async def admin_stats(db: AsyncSession = Depends(get_db)):
     # Total distinct documents
     doc_count = await db.scalar(
