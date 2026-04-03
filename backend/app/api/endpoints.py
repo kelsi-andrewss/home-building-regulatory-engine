@@ -174,11 +174,19 @@ async def _resolve_parcel_and_zone(req, db, parcel_svc, resolver) -> _LookupResu
         for f in db_fragments
     ]
 
+    # Build project_params from request fields (if present)
+    project_params = {}
+    for field in ("bedrooms", "bathrooms", "sqft"):
+        val = getattr(req, field, None)
+        if val is not None:
+            project_params[field] = val
+
     resolved = resolver.resolve(
         parsed_zone=parsed_zone,
         parcel_data=parcel_dict,
         rule_fragments=rule_fragments,
         specific_plan=zone_row.specific_plan_name,
+        project_params=project_params or None,
     )
 
     return _LookupResult(
