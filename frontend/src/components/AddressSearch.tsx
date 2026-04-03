@@ -56,8 +56,8 @@ export default function AddressSearch({ onSelect }: Props) {
   return (
     <div ref={containerRef} className="search-container">
       <div className="search-input-wrapper">
-        <div style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
@@ -68,7 +68,7 @@ export default function AddressSearch({ onSelect }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search LA property addresses..."
           className="input-field"
-          style={{ paddingLeft: '48px' }}
+          style={{ paddingLeft: '36px' }}
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
           }}
