@@ -101,14 +101,15 @@ export default function FeedbackButton({ constraintName }: Props) {
             position: 'absolute',
             top: '100%',
             right: 0,
-            marginTop: '4px',
-            background: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            padding: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            marginTop: '8px',
+            background: 'var(--bg-card, #fff)',
+            border: '1px solid var(--border-color, #e2e8f0)',
+            borderRadius: 'var(--radius-md, 10px)',
+            padding: '12px',
+            boxShadow: 'var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))',
             zIndex: 20,
-            width: '200px',
+            width: '240px',
+            transition: 'var(--transition-fast, all 0.2s ease)',
           }}
         >
           <input
@@ -121,27 +122,29 @@ export default function FeedbackButton({ constraintName }: Props) {
             }}
             style={{
               width: '100%',
-              padding: '4px 8px',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              fontSize: '12px',
+              padding: '8px 12px',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              borderRadius: 'var(--radius-sm, 6px)',
+              fontSize: '13px',
               outline: 'none',
               boxSizing: 'border-box',
+              transition: 'var(--transition-fast, all 0.2s ease)',
+              marginBottom: '8px',
             }}
           />
           <button
             onClick={submitReason}
             style={{
-              marginTop: '4px',
               width: '100%',
-              padding: '4px',
-              background: '#3b82f6',
+              padding: '8px',
+              background: 'var(--primary, #2563eb)',
               color: '#fff',
               border: 'none',
-              borderRadius: '4px',
-              fontSize: '11px',
+              borderRadius: 'var(--radius-sm, 6px)',
+              fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
+              transition: 'var(--transition-fast, all 0.2s ease)',
             }}
           >
             Submit

@@ -54,81 +54,31 @@ export default function AddressSearch({ onSelect }: Props) {
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative' }}>
-      <div style={{ position: 'relative' }}>
+    <div ref={containerRef} className="search-container">
+      <div className="search-input-wrapper">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Enter an LA address..."
-          style={{
-            width: '100%',
-            padding: '10px 36px 10px 12px',
-            border: '1px solid #d1d5db',
-            borderRadius: '6px',
-            fontSize: '14px',
-            boxSizing: 'border-box',
-            outline: 'none',
-          }}
+          className="input-field"
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
           }}
         />
-        {isLoading && (
-          <span
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: '16px',
-              height: '16px',
-              border: '2px solid #d1d5db',
-              borderTopColor: '#3b82f6',
-              borderRadius: '50%',
-              animation: 'spin 0.6s linear infinite',
-            }}
-          />
-        )}
+        {isLoading && <div className="search-spinner" />}
       </div>
 
       {isOpen && results.length > 0 && (
-        <ul
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            zIndex: 10,
-            background: '#fff',
-            border: '1px solid #d1d5db',
-            borderRadius: '0 0 6px 6px',
-            margin: 0,
-            padding: 0,
-            listStyle: 'none',
-            maxHeight: '240px',
-            overflowY: 'auto',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          }}
-        >
+        <ul className="suggestions-list">
           {results.map((r) => (
             <li
               key={r.apn}
               onClick={() => handleSelect(r)}
-              style={{
-                padding: '10px 12px',
-                cursor: 'pointer',
-                borderBottom: '1px solid #f3f4f6',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = '#f3f4f6';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = '#fff';
-              }}
+              className="suggestion-item"
             >
-              <div style={{ fontSize: '14px', fontWeight: 500 }}>{r.address}</div>
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>APN: {r.apn}</div>
+              <div className="suggestion-address">{r.address}</div>
+              <div className="suggestion-apn">APN: {r.apn}</div>
             </li>
           ))}
         </ul>

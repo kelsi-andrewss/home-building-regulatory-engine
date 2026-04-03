@@ -114,24 +114,16 @@ function MainApp() {
     : [];
 
   return (
-    <>
-    <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', height: '100vh' }}>
+    <div className="app-container">
       {/* Sidebar */}
-      <div
-        style={{
-          overflowY: 'auto',
-          borderRight: '1px solid #e5e7eb',
-          padding: '20px 16px',
-          background: '#fff',
-        }}
-      >
-        <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>
-          Building Regulatory Engine
+      <aside className="sidebar">
+        <h1 className="sidebar-title">
+          Regulatory Engine
         </h1>
         <AddressSearch onSelect={handleParcelSelect} />
 
         {state.assessment && (
-          <div style={{ marginTop: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <BuildingTypeSelector
               selectedType={state.selectedType}
               availableTypes={availableTypes}
@@ -150,46 +142,26 @@ function MainApp() {
         )}
 
         {!state.assessment && !state.isSearching && (
-          <div style={{ marginTop: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
+          <div style={{ marginTop: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
             Search for an address to get started.
           </div>
         )}
-      </div>
+      </aside>
 
       {/* Map panel */}
-      <div style={{ position: 'relative' }}>
+      <main className="map-container">
         <MapboxMap
           assessment={state.assessment}
           hoveredConstraint={state.hoveredConstraint}
           designConstraints={state.designConstraints}
         />
         {state.isSearching && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(255,255,255,0.6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 5,
-            }}
-          >
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                border: '3px solid #d1d5db',
-                borderTopColor: '#3b82f6',
-                borderRadius: '50%',
-                animation: 'spin 0.6s linear infinite',
-              }}
-            />
+          <div className="loading-overlay">
+            <div className="spinner" />
           </div>
         )}
-      </div>
+      </main>
+      <ChatInterface />
     </div>
-    <ChatInterface />
-    </>
   );
 }
