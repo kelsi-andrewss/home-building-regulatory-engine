@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -115,6 +116,10 @@ class PdfProcessor:
     def _cached_path(self, url: str) -> Path:
         # Derive a safe filename from the URL
         safe = url.split("/")[-1] or "download.pdf"
+        safe = re.sub(r'[/\\]', '_', safe)
         if not safe.endswith(".pdf"):
             safe += ".pdf"
-        return self.cache_dir / safe
+        result = (self.cache_dir / safe).resolve()
+        if not str(result).startswith(str(self.cache_dir.resolve())):
+            result = (self.cache_dir / "download.pdf").resolve()
+        return result
