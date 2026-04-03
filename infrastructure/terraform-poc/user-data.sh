@@ -7,7 +7,7 @@ systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent
 
 # Install Docker
-dnf install -y docker git
+dnf install -y docker docker-buildx-plugin git
 systemctl enable docker
 systemctl start docker
 usermod -aG docker ec2-user
