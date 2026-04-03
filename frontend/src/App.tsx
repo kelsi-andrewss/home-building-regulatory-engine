@@ -1,11 +1,10 @@
 import { useEffect, useReducer, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { BuildingType, Constraint, GeocodingResult } from './api/client';
+import type { BuildingType, GeocodingResult } from './api/client';
 import { assessParcel, fetchDesignConstraints } from './api/client';
 import AddressSearch from './components/AddressSearch';
 import BuildingTypeSelector from './components/BuildingTypeSelector';
 import BuildabilityReport from './components/BuildabilityReport';
-import CitationsPanel from './components/CitationsPanel';
 import MapboxMap from './components/MapboxMap';
 import AdminDashboard from './pages/AdminDashboard';
 import { AssessmentProvider, useAssessment } from './context/AssessmentContext';
@@ -115,10 +114,6 @@ function MainApp() {
     ? (assessment.building_types.map((bt) => bt.type) as BuildingType[])
     : [];
 
-  const currentConstraints: Constraint[] = assessment
-    ? (assessment.building_types.find((bt) => bt.type === state.selectedType)?.constraints ?? [])
-    : [];
-
   return (
     <div className="app-container">
       {/* Sidebar */}
@@ -146,7 +141,6 @@ function MainApp() {
                   dispatch({ type: 'SET_HOVERED_CONSTRAINT', payload: name })
                 }
               />
-              <CitationsPanel constraints={currentConstraints} />
             </div>
           )}
 
