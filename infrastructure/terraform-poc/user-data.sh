@@ -32,7 +32,8 @@ AWS_REGION=${aws_region}
 PDF_BUCKET=${pdf_bucket}
 ENVEOF
 
-# Write docker-compose.yml
+# Write docker-compose.yml — backend exposed on port 80, no Caddy
+# CloudFront handles HTTPS + routing (/api/* -> EC2, default -> S3)
 cat > docker-compose.yml << DCEOF
 services:
   db:
@@ -53,45 +54,17 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: Dockerfile
     env_file: .env
+    ports:
+      - "80:8000"
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./frontend-dist:/srv
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - backend
-    restart: unless-stopped
-
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
 DCEOF
-
-# Write Caddyfile
-cat > Caddyfile << 'CADDYEOF'
-:80 {
-  handle /api/* {
-    reverse_proxy backend:8000
-  }
-  handle {
-    root * /srv
-    try_files {path} /index.html
-    file_server
-  }
-}
-CADDYEOF
 
 echo "Setup complete. Clone repo and deploy with: docker-compose up -d"
