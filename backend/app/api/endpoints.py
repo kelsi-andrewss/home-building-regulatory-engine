@@ -180,7 +180,7 @@ async def assess(
         raise
     except Exception as exc:
         logger.exception("Unhandled error in /assess")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def _assess_inner(req, db, parcel_svc, resolver):
