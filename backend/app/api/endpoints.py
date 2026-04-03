@@ -47,7 +47,7 @@ router = APIRouter(prefix="/api")
 CACHE_TTL = timedelta(hours=24)
 
 
-def _parcel_service() -> ParcelService:
+async def _parcel_service():
     import httpx
 
     from backend.app.clients.cams_client import CAMSClient
@@ -55,11 +55,14 @@ def _parcel_service() -> ParcelService:
     from backend.app.clients.navigatela_client import NavigateLAClient
 
     session = httpx.AsyncClient(timeout=30.0)
-    return ParcelService(
-        cams=CAMSClient(session),
-        lacounty=LACountyClient(session),
-        navigatela=NavigateLAClient(session),
-    )
+    try:
+        yield ParcelService(
+            cams=CAMSClient(session),
+            lacounty=LACountyClient(session),
+            navigatela=NavigateLAClient(session),
+        )
+    finally:
+        await session.aclose()
 
 
 def _constraint_resolver() -> ConstraintResolver:
