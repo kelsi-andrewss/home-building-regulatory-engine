@@ -1,11 +1,10 @@
 import { useEffect, useReducer, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { AssessmentResponse, BuildingType, Constraint, DesignConstraintResponse, GeocodingResult } from './api/client';
+import type { BuildingType, GeocodingResult } from './api/client';
 import { assessParcel, fetchDesignConstraints } from './api/client';
 import AddressSearch from './components/AddressSearch';
 import BuildingTypeSelector from './components/BuildingTypeSelector';
 import BuildabilityReport from './components/BuildabilityReport';
-import CitationsPanel from './components/CitationsPanel';
 import MapboxMap from './components/MapboxMap';
 import AdminDashboard from './pages/AdminDashboard';
 import { AssessmentProvider, useAssessment } from './context/AssessmentContext';
@@ -16,8 +15,6 @@ interface ZoneError {
 }
 
 interface AppState {
-  assessment: AssessmentResponse | null;
-  designConstraints: DesignConstraintResponse | null;
   selectedType: BuildingType;
   isSearching: boolean;
   hoveredConstraint: string | null;
@@ -26,16 +23,13 @@ interface AppState {
 
 type Action =
   | { type: 'SELECT_PARCEL' }
-  | { type: 'SET_ASSESSMENT'; payload: AssessmentResponse }
-  | { type: 'SET_DESIGN_CONSTRAINTS'; payload: DesignConstraintResponse }
+  | { type: 'ASSESSMENT_LOADED' }
   | { type: 'SEARCH_FAILED' }
   | { type: 'SET_ZONE_ERROR'; payload: ZoneError }
   | { type: 'SET_BUILDING_TYPE'; payload: BuildingType }
   | { type: 'SET_HOVERED_CONSTRAINT'; payload: string | null };
 
 const initialState: AppState = {
-  assessment: null,
-  designConstraints: null,
   selectedType: 'SFH',
   isSearching: false,
   hoveredConstraint: null,
@@ -46,14 +40,12 @@ function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SELECT_PARCEL':
       return { ...state, isSearching: true, zoneError: null };
-    case 'SET_ASSESSMENT':
-      return { ...state, isSearching: false, assessment: action.payload, designConstraints: null, zoneError: null };
-    case 'SET_DESIGN_CONSTRAINTS':
-      return { ...state, designConstraints: action.payload };
+    case 'ASSESSMENT_LOADED':
+      return { ...state, isSearching: false, zoneError: null };
     case 'SEARCH_FAILED':
       return { ...state, isSearching: false };
     case 'SET_ZONE_ERROR':
-      return { ...state, isSearching: false, assessment: null, zoneError: action.payload };
+      return { ...state, isSearching: false, zoneError: action.payload };
     case 'SET_BUILDING_TYPE':
       return { ...state, selectedType: action.payload };
     case 'SET_HOVERED_CONSTRAINT':
@@ -89,20 +81,19 @@ export default function App() {
 
 function MainApp() {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const { dispatch: ctxDispatch } = useAssessment();
+  const { assessment, designConstraints, dispatch: ctxDispatch } = useAssessment();
 
   async function handleParcelSelect(candidate: GeocodingResult) {
     dispatch({ type: 'SELECT_PARCEL' });
     try {
       const result = await assessParcel({ address: candidate.address, apn: candidate.apn });
       const resultApn = result.parcel.apn;
-      dispatch({ type: 'SET_ASSESSMENT', payload: result });
+      dispatch({ type: 'ASSESSMENT_LOADED' });
       ctxDispatch({ type: 'SET_ASSESSMENT', payload: result });
 
       try {
         const dc = await fetchDesignConstraints({ address: candidate.address, apn: candidate.apn });
         if (dc.parcel_apn === resultApn) {
-          dispatch({ type: 'SET_DESIGN_CONSTRAINTS', payload: dc });
           ctxDispatch({ type: 'SET_DESIGN_CONSTRAINTS', payload: dc });
         }
       } catch (dcErr) {
@@ -119,12 +110,8 @@ function MainApp() {
     }
   }
 
-  const availableTypes: BuildingType[] = state.assessment
-    ? (state.assessment.building_types.map((bt) => bt.type) as BuildingType[])
-    : [];
-
-  const currentConstraints: Constraint[] = state.assessment
-    ? (state.assessment.building_types.find((bt) => bt.type === state.selectedType)?.constraints ?? [])
+  const availableTypes: BuildingType[] = assessment
+    ? (assessment.building_types.map((bt) => bt.type) as BuildingType[])
     : [];
 
   return (
@@ -139,7 +126,7 @@ function MainApp() {
           
           <AddressSearch onSelect={handleParcelSelect} />
 
-          {state.assessment && (
+          {assessment && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
               <BuildingTypeSelector
                 selectedType={state.selectedType}
@@ -147,14 +134,13 @@ function MainApp() {
                 onSelect={(t) => dispatch({ type: 'SET_BUILDING_TYPE', payload: t })}
               />
               <BuildabilityReport
-                assessment={state.assessment}
+                assessment={assessment}
                 selectedType={state.selectedType}
-                designConstraints={state.designConstraints}
+                designConstraints={designConstraints}
                 onHoverConstraint={(name) =>
                   dispatch({ type: 'SET_HOVERED_CONSTRAINT', payload: name })
                 }
               />
-              <CitationsPanel constraints={currentConstraints} />
             </div>
           )}
 
@@ -176,7 +162,7 @@ function MainApp() {
             </div>
           )}
 
-          {!state.assessment && !state.zoneError && !state.isSearching && (
+          {!assessment && !state.zoneError && !state.isSearching && (
             <div style={{ marginTop: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '15px', lineHeight: 1.6 }}>
               Enter a property address to analyze development potential and building constraints.
             </div>
@@ -187,9 +173,9 @@ function MainApp() {
       {/* Map panel */}
       <main className="map-container">
         <MapboxMap
-          assessment={state.assessment}
+          assessment={assessment}
           hoveredConstraint={state.hoveredConstraint}
-          designConstraints={state.designConstraints}
+          designConstraints={designConstraints}
         />
         {state.isSearching && (
           <div className="loading-overlay">

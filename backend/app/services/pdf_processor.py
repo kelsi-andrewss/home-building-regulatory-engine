@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,8 +9,8 @@ import pdfplumber
 
 logger = logging.getLogger(__name__)
 
-# Rough estimate: 1 token ~ 4 chars for English text
-CHARS_PER_TOKEN = 4
+# Rough estimate: 1 token ~ 3.5 chars for English text
+CHARS_PER_TOKEN = 3.5
 
 
 class PdfExtractionError(Exception):
@@ -115,6 +116,10 @@ class PdfProcessor:
     def _cached_path(self, url: str) -> Path:
         # Derive a safe filename from the URL
         safe = url.split("/")[-1] or "download.pdf"
+        safe = re.sub(r'[/\\]', '_', safe)
         if not safe.endswith(".pdf"):
             safe += ".pdf"
-        return self.cache_dir / safe
+        result = (self.cache_dir / safe).resolve()
+        if not str(result).startswith(str(self.cache_dir.resolve())):
+            result = (self.cache_dir / "download.pdf").resolve()
+        return result

@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import type { AssessmentResponse, BuildingType, DesignConstraintResponse } from '../api/client';
 import DesignConstraintsPanel from './DesignConstraintsPanel';
-import FeedbackButton from './FeedbackButton';
 import ParameterInputs from './ParameterInputs';
 import { toTitleCase } from '../utils/format';
 
 const TYPE_LABELS: Record<BuildingType, string> = {
   SFH: 'Single Family Home',
   ADU: 'Accessory Dwelling Unit',
-  GH: 'Guest House',
-  DUP: 'Duplex',
+  'Guest House': 'Guest House',
+  Duplex: 'Duplex',
 };
 
 interface Props {
@@ -66,7 +65,6 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
             <th>Value</th>
             <th>Confidence</th>
             <th style={{ width: '40px' }}></th>
-            <th style={{ width: '56px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -76,7 +74,7 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
               onMouseEnter={() => onHoverConstraint(c.name)}
               onMouseLeave={() => onHoverConstraint(null)}
             >
-              <td colSpan={5} style={{ padding: 0 }}>
+              <td colSpan={4} style={{ padding: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <tbody>
                     <tr>
@@ -102,13 +100,10 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '14px 4px', width: '56px', textAlign: 'center' }}>
-                        <FeedbackButton constraintName={c.name} />
-                      </td>
                     </tr>
                     {expandedCitations.has(c.name) && (
                       <tr>
-                        <td colSpan={5}>
+                        <td colSpan={4}>
                           <div className="expansion-content">
                             <div style={{ marginBottom: '8px' }}>
                               <strong style={{ color: 'var(--text-main)' }}>Citation:</strong> {c.citation}

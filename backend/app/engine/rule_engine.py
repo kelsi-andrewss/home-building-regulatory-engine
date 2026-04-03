@@ -295,6 +295,7 @@ class ConstraintResolver:
         parcel_data: dict,
         rule_fragments: list[dict],
         specific_plan: str | None = None,
+        project_params: dict | None = None,
     ) -> ResolvedAssessment:
         # 1. Load base zone rules
         base_rules = BASE_ZONE_RULES.get(parsed_zone.zone_class, {})
@@ -341,11 +342,18 @@ class ConstraintResolver:
             base_constraints = _merge_constraints(base_constraints, hd_constraints)
 
         # 3. Filter and apply rule fragments
-        matching_fragments = [
-            f for f in rule_fragments
-            if parsed_zone.zone_class in (f.get("zone_applicability") or [])
-            or "all" in (f.get("zone_applicability") or [])
-        ]
+        # Build zone index for O(1) lookup instead of linear scan
+        zone_index: dict[str, list[dict]] = {}
+        all_zones: list[dict] = []
+        for f in rule_fragments:
+            applicability = f.get("zone_applicability") or []
+            if "all" in applicability:
+                all_zones.append(f)
+            else:
+                for zone in applicability:
+                    zone_index.setdefault(zone, []).append(f)
+
+        matching_fragments = zone_index.get(parsed_zone.zone_class, []) + all_zones
 
         if specific_plan:
             sp_fragments = [
@@ -397,12 +405,17 @@ class ConstraintResolver:
         # ADU -- always allowed by state law
         from backend.app.engine.adu_preemption import apply_adu_preemption
         adu_result = apply_adu_preemption(list(base_constraints))
+        adu_max_size = 1200.0
+        if project_params and "sqft" in project_params:
+            requested = project_params["sqft"]
+            if requested < adu_max_size:
+                adu_max_size = requested
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.ADU,
             allowed=True,
             constraints=adu_result.constraints,
             max_units=1,
-            max_size_sf=1200,
+            max_size_sf=adu_max_size,
             notes="; ".join(adu_result.preemptions_applied) if adu_result.preemptions_applied else None,
         ))
 

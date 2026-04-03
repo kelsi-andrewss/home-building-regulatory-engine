@@ -50,8 +50,11 @@ export default function AdminDashboard() {
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'name' | 'fragment_count'>('name');
   const [sortAsc, setSortAsc] = useState(true);
+  const [ingestForm, setIngestForm] = useState({ name: '', url: '', specificPlan: '' });
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestStatus, setIngestStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  useEffect(() => {
+  function fetchStats() {
     fetch(`${BASE_URL}/admin/stats`)
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
@@ -59,7 +62,61 @@ export default function AdminDashboard() {
       })
       .then(setStats)
       .catch((e) => setError(e.message));
+  }
+
+  useEffect(() => {
+    fetchStats();
   }, []);
+
+  async function handleIngest(e: React.FormEvent) {
+    e.preventDefault();
+    setIsIngesting(true);
+    setIngestStatus(null);
+
+    try {
+      const res = await fetch(`${BASE_URL}/admin/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(import.meta.env.VITE_ADMIN_API_KEY
+            ? { Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          name: ingestForm.name,
+          url: ingestForm.url,
+          specific_plan: ingestForm.specificPlan,
+        }),
+      });
+
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        throw new Error(detail?.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.status === 'completed') {
+        setIngestStatus({
+          type: 'success',
+          message: `Ingested ${data.fragments_extracted} fragments (${data.fragments_flagged} flagged)`,
+        });
+        setIngestForm({ name: '', url: '', specificPlan: '' });
+        fetchStats();
+      } else {
+        setIngestStatus({
+          type: 'error',
+          message: data.errors?.join('; ') || 'Ingestion failed',
+        });
+      }
+    } catch (err) {
+      setIngestStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsIngesting(false);
+    }
+  }
 
   if (error) {
     return (
@@ -109,6 +166,100 @@ export default function AdminDashboard() {
         <a href="/" style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}>
           Back to app
         </a>
+      </div>
+
+      {/* Ingestion form */}
+      <div
+        style={{
+          padding: '20px 24px',
+          marginBottom: 24,
+          background: 'rgba(255, 255, 255, 0.85)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid #e5e7eb',
+          borderRadius: 12,
+        }}
+      >
+        <h2 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginTop: 0, marginBottom: 16 }}>
+          Ingest New Regulation
+        </h2>
+        <form onSubmit={handleIngest}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            <input
+              type="text"
+              placeholder="Document name"
+              required
+              disabled={isIngesting}
+              value={ingestForm.name}
+              onChange={(e) => setIngestForm({ ...ingestForm, name: e.target.value })}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              type="url"
+              placeholder="PDF URL"
+              required
+              disabled={isIngesting}
+              value={ingestForm.url}
+              onChange={(e) => setIngestForm({ ...ingestForm, url: e.target.value })}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Specific plan name"
+              required
+              disabled={isIngesting}
+              value={ingestForm.specificPlan}
+              onChange={(e) => setIngestForm({ ...ingestForm, specificPlan: e.target.value })}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {ingestStatus && (
+              <span
+                style={{
+                  fontSize: 13,
+                  color: ingestStatus.type === 'success' ? '#16a34a' : '#dc2626',
+                }}
+              >
+                {ingestStatus.message}
+              </span>
+            )}
+            <button
+              type="submit"
+              disabled={isIngesting}
+              style={{
+                marginLeft: 'auto',
+                padding: '8px 20px',
+                background: isIngesting ? '#9ca3af' : '#2563eb',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: isIngesting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isIngesting ? 'Ingesting...' : 'Ingest'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Stats cards */}

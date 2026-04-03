@@ -7,6 +7,9 @@ from pydantic import BaseModel, model_validator
 class AssessRequest(BaseModel):
     address: str | None = None
     apn: str | None = None
+    bedrooms: int | None = None
+    bathrooms: float | None = None
+    sqft: float | None = None
 
     @model_validator(mode="after")
     def require_address_or_apn(self) -> "AssessRequest":

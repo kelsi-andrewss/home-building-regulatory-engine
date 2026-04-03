@@ -1,5 +1,9 @@
 """Shared test fixtures for geometry-based tests."""
 
+import os
+
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/cover_test")
+
 from shapely.geometry import LineString
 
 

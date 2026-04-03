@@ -1,11 +1,58 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.clients.claude_client import ClaudeClient
+from backend.app.config import settings
 from backend.app.db.models import RuleFragment
 from backend.app.db.session import get_db
+from backend.app.schemas.admin import IngestRequest, IngestionResponse
+from backend.app.services.ingestion_pipeline import IngestionPipeline
+from backend.app.services.pdf_processor import PdfProcessor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin")
+
+
+async def verify_admin_key(authorization: str | None = Header(None)) -> None:
+    if settings.admin_api_key is None:
+        raise HTTPException(status_code=401, detail="Admin endpoint disabled")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    token = authorization.removeprefix("Bearer ")
+    if token != settings.admin_api_key:
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+
+
+@router.post("/ingest", dependencies=[Depends(verify_admin_key)])
+async def ingest_document(
+    request: IngestRequest,
+    db: AsyncSession = Depends(get_db),
+) -> IngestionResponse:
+    if not settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Anthropic API key not configured",
+        )
+
+    pdf_processor = PdfProcessor()
+    claude_client = ClaudeClient(api_key=settings.anthropic_api_key)
+    pipeline = IngestionPipeline(pdf_processor, claude_client, db)
+
+    result = await pipeline.ingest_document(
+        request.name, request.url, request.specific_plan
+    )
+
+    return IngestionResponse(
+        status=result.status.value,
+        document_name=result.document_name,
+        fragments_extracted=result.fragments_extracted,
+        fragments_flagged=result.fragments_flagged,
+        errors=result.errors,
+    )
 
 
 @router.get("/stats")

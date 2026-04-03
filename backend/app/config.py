@@ -2,8 +2,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/regulatory_engine"
+    database_url: str
     database_echo: bool = False
+    admin_api_key: str | None = None
+    anthropic_api_key: str | None = None
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
