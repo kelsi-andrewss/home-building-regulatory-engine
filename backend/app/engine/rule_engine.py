@@ -295,6 +295,7 @@ class ConstraintResolver:
         parcel_data: dict,
         rule_fragments: list[dict],
         specific_plan: str | None = None,
+        project_params: dict | None = None,
     ) -> ResolvedAssessment:
         # 1. Load base zone rules
         base_rules = BASE_ZONE_RULES.get(parsed_zone.zone_class, {})
@@ -404,12 +405,17 @@ class ConstraintResolver:
         # ADU -- always allowed by state law
         from backend.app.engine.adu_preemption import apply_adu_preemption
         adu_result = apply_adu_preemption(list(base_constraints))
+        adu_max_size = 1200.0
+        if project_params and "sqft" in project_params:
+            requested = project_params["sqft"]
+            if requested < adu_max_size:
+                adu_max_size = requested
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.ADU,
             allowed=True,
             constraints=adu_result.constraints,
             max_units=1,
-            max_size_sf=1200,
+            max_size_sf=adu_max_size,
             notes="; ".join(adu_result.preemptions_applied) if adu_result.preemptions_applied else None,
         ))
 
