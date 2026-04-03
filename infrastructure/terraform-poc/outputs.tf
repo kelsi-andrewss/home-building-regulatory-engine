@@ -29,3 +29,7 @@ output "cloudfront_url" {
 output "cloudfront_distribution_id" {
   value = aws_cloudfront_distribution.main.id
 }
+
+output "ecr_repository_url" {
+  value = aws_ecr_repository.backend.repository_url
+}

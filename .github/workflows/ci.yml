@@ -47,6 +47,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
 
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          docker build -t $ECR_REPOSITORY:latest -t $ECR_REPOSITORY:${{ github.sha }} .
+          docker push $ECR_REPOSITORY:latest
+          docker push $ECR_REPOSITORY:${{ github.sha }}
+
       - name: Upload frontend to S3
         run: aws s3 sync frontend/dist s3://${{ secrets.PDF_BUCKET }}/deploys/frontend-dist --delete
 
@@ -59,11 +71,14 @@ jobs:
           fi
 
       - name: Deploy backend via SSM
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && cp repo/Dockerfile . && docker build --no-cache -t app-backend -f Dockerfile . && docker-compose up -d\"]" \
+            --parameters "commands=[\"cd /opt/app && aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ECR_REGISTRY && docker pull $ECR_REPOSITORY:latest && docker-compose up -d\"]" \
             --query "Command.CommandId" \
             --output text)
 
