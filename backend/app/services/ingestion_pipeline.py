@@ -115,12 +115,13 @@ class IngestionPipeline:
 
             await self.db_session.flush()
 
-            # 5. Update SpecificPlan record if it exists
+            # 5. Upsert SpecificPlan record
             await self._update_specific_plan(
-                specific_plan, result.fragments_extracted
+                specific_plan, result.fragments_extracted, url
             )
 
             result.status = IngestionStatus.COMPLETED
+            await self.db_session.commit()
             logger.info(
                 "Completed %s: %d fragments (%d flagged)",
                 name, result.fragments_extracted, result.fragments_flagged,
@@ -197,9 +198,9 @@ class IngestionPipeline:
         self.db_session.add(rule)
 
     async def _update_specific_plan(
-        self, plan_name: str, fragment_count: int
+        self, plan_name: str, fragment_count: int, url: str
     ) -> None:
-        """Update the SpecificPlan record with ingestion results."""
+        """Upsert the SpecificPlan record with ingestion results."""
         from sqlalchemy import select
 
         stmt = select(SpecificPlan).where(SpecificPlan.name == plan_name)
@@ -209,3 +210,12 @@ class IngestionPipeline:
             plan.ingestion_status = "completed"
             plan.fragment_count = fragment_count
             plan.ingested_at = datetime.now(timezone.utc)
+        else:
+            plan = SpecificPlan(
+                name=plan_name,
+                source_pdf_url=url,
+                ingestion_status="completed",
+                fragment_count=fragment_count,
+                ingested_at=datetime.now(timezone.utc),
+            )
+            self.db_session.add(plan)

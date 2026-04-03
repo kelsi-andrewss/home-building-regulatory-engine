@@ -290,8 +290,9 @@ class TestIngestDocumentEndToEnd:
         assert result.fragments_flagged == 0
 
         # Verify DB add was called with correct confidence
-        mock_session.add.assert_called_once()
-        stored_fragment = mock_session.add.call_args[0][0]
+        # add is called twice: once for RuleFragment, once for SpecificPlan upsert
+        assert mock_session.add.call_count == 2
+        stored_fragment = mock_session.add.call_args_list[0][0][0]
         assert stored_fragment.confidence == "interpreted"
         assert stored_fragment.constraint_type == "height_max"
         assert stored_fragment.source_document == "Test Plan"
