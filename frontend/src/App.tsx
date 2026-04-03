@@ -19,6 +19,7 @@ interface AppState {
   isSearching: boolean;
   hoveredConstraint: string | null;
   zoneError: ZoneError | null;
+  error: string | null;
 }
 
 type Action =
@@ -26,6 +27,8 @@ type Action =
   | { type: 'ASSESSMENT_LOADED' }
   | { type: 'SEARCH_FAILED' }
   | { type: 'SET_ZONE_ERROR'; payload: ZoneError }
+  | { type: 'SET_ERROR'; payload: string }
+  | { type: 'CLEAR_ERROR' }
   | { type: 'SET_BUILDING_TYPE'; payload: BuildingType }
   | { type: 'SET_HOVERED_CONSTRAINT'; payload: string | null };
 
@@ -34,18 +37,23 @@ const initialState: AppState = {
   isSearching: false,
   hoveredConstraint: null,
   zoneError: null,
+  error: null,
 };
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SELECT_PARCEL':
-      return { ...state, isSearching: true, zoneError: null };
+      return { ...state, isSearching: true, zoneError: null, error: null };
     case 'ASSESSMENT_LOADED':
-      return { ...state, isSearching: false, zoneError: null };
+      return { ...state, isSearching: false, zoneError: null, error: null };
     case 'SEARCH_FAILED':
       return { ...state, isSearching: false };
     case 'SET_ZONE_ERROR':
-      return { ...state, isSearching: false, zoneError: action.payload };
+      return { ...state, isSearching: false, zoneError: action.payload, error: null };
+    case 'SET_ERROR':
+      return { ...state, isSearching: false, error: action.payload };
+    case 'CLEAR_ERROR':
+      return { ...state, error: null };
     case 'SET_BUILDING_TYPE':
       return { ...state, selectedType: action.payload };
     case 'SET_HOVERED_CONSTRAINT':
@@ -100,12 +108,19 @@ function MainApp() {
         console.error('Design constraints fetch failed:', dcErr);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes('not supported')) {
-        dispatch({ type: 'SET_ZONE_ERROR', payload: { address: candidate.address, detail: message } });
+      const raw = err instanceof Error ? err.message : String(err);
+      let detail = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.detail) detail = parsed.detail;
+      } catch { /* not JSON, use raw */ }
+
+      if (detail.includes('not supported')) {
+        dispatch({ type: 'SET_ZONE_ERROR', payload: { address: candidate.address, detail } });
+      } else if (detail.includes('Upstream lookup failed')) {
+        dispatch({ type: 'SET_ERROR', payload: 'Government data unavailable for this parcel — try again later' });
       } else {
-        console.error('Assessment failed:', err);
-        dispatch({ type: 'SEARCH_FAILED' });
+        dispatch({ type: 'SET_ERROR', payload: 'Something went wrong — try a different address' });
       }
     }
   }
@@ -125,6 +140,40 @@ function MainApp() {
           </header>
           
           <AddressSearch onSelect={handleParcelSelect} />
+
+          {state.error && (
+            <div style={{
+              marginTop: '8px',
+              padding: '12px',
+              background: '#fef2f2',
+              border: '1px solid #fca5a5',
+              borderRadius: '8px',
+              color: '#991b1b',
+              fontSize: '13px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '8px',
+            }}>
+              <span>{state.error}</span>
+              <button
+                onClick={() => dispatch({ type: 'CLEAR_ERROR' })}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#991b1b',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+                aria-label="Dismiss error"
+              >
+                &times;
+              </button>
+            </div>
+          )}
 
           {assessment && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -162,7 +211,7 @@ function MainApp() {
             </div>
           )}
 
-          {!assessment && !state.zoneError && !state.isSearching && (
+          {!assessment && !state.zoneError && !state.error && !state.isSearching && (
             <div style={{ marginTop: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '15px', lineHeight: 1.6 }}>
               Enter a property address to analyze development potential and building constraints.
             </div>
