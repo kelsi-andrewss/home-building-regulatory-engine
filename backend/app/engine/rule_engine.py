@@ -341,11 +341,18 @@ class ConstraintResolver:
             base_constraints = _merge_constraints(base_constraints, hd_constraints)
 
         # 3. Filter and apply rule fragments
-        matching_fragments = [
-            f for f in rule_fragments
-            if parsed_zone.zone_class in (f.get("zone_applicability") or [])
-            or "all" in (f.get("zone_applicability") or [])
-        ]
+        # Build zone index for O(1) lookup instead of linear scan
+        zone_index: dict[str, list[dict]] = {}
+        all_zones: list[dict] = []
+        for f in rule_fragments:
+            applicability = f.get("zone_applicability") or []
+            if "all" in applicability:
+                all_zones.append(f)
+            else:
+                for zone in applicability:
+                    zone_index.setdefault(zone, []).append(f)
+
+        matching_fragments = zone_index.get(parsed_zone.zone_class, []) + all_zones
 
         if specific_plan:
             sp_fragments = [
