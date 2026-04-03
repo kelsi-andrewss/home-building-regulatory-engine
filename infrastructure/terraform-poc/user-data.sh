@@ -57,9 +57,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${ecr_repository_url}:latest
     env_file: .env
     ports:
       - "80:8000"
@@ -72,4 +70,7 @@ volumes:
   pgdata:
 DCEOF
 
-echo "Setup complete. Clone repo and deploy with: docker-compose up -d"
+# Login to ECR so docker-compose can pull the backend image
+aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin ${ecr_registry}
+
+echo "Setup complete. Deploy with: docker-compose up -d"

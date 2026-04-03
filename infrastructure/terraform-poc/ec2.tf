@@ -44,6 +44,25 @@ resource "aws_iam_role_policy" "ec2_ssm" {
   })
 }
 
+resource "aws_iam_role_policy" "ec2_ecr" {
+  name = "ecr-pull"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetAuthorizationToken",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2" {
   name = "${var.project}-${var.environment}-ec2"
   role = aws_iam_role.ec2.name
@@ -63,9 +82,11 @@ resource "aws_instance" "app" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user-data.sh", {
-    project    = var.project
-    pdf_bucket = aws_s3_bucket.pdfs.id
-    aws_region = var.aws_region
+    project            = var.project
+    pdf_bucket         = aws_s3_bucket.pdfs.id
+    aws_region         = var.aws_region
+    ecr_repository_url = aws_ecr_repository.backend.repository_url
+    ecr_registry       = split("/", aws_ecr_repository.backend.repository_url)[0]
   }))
 
   tags = { Name = "${var.project}-${var.environment}" }
