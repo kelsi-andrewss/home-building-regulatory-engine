@@ -60,7 +60,7 @@ def apply_adu_preemption(
             # State says city can't require MORE than 4'. If local > 4', override.
             if local.value > STATE_LAW["setback_max"]:
                 preemptions.append(
-                    f"{ct}: local {local.value}' -> state max {STATE_LAW["setback_max"]}' "
+                    f"{ct}: local {local.value}' -> state max {STATE_LAW['setback_max']}' "
                     f"(local was more restrictive)"
                 )
                 result_constraints.append(ResolvedConstraint(
@@ -69,7 +69,7 @@ def apply_adu_preemption(
                     unit="ft",
                     confidence=Confidence.VERIFIED,
                     citation=_CITATION,
-                    explanation=f"State law caps ADU {ct} at {STATE_LAW["setback_max"]}'",
+                    explanation=f"State law caps ADU {ct} at {STATE_LAW['setback_max']}'",
                     source="adu_state_law",
                 ))
             else:
@@ -106,7 +106,7 @@ def apply_adu_preemption(
             unit="sf",
             confidence=Confidence.VERIFIED,
             citation=_CITATION,
-            explanation=f"State law guarantees {STATE_LAW["size_floor"]} sf minimum ADU",
+            explanation=f"State law guarantees {STATE_LAW['size_floor']} sf minimum ADU",
             source="adu_state_law",
         ))
 
@@ -117,7 +117,7 @@ def apply_adu_preemption(
             unit="sf",
             confidence=Confidence.VERIFIED,
             citation=_CITATION,
-            explanation=f"State law allows up to {STATE_LAW["size_max_detached"]} sf detached ADU",
+            explanation=f"State law allows up to {STATE_LAW['size_max_detached']} sf detached ADU",
             source="adu_state_law",
         ))
 

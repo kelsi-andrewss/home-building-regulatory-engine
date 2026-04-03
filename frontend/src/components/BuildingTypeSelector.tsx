@@ -3,11 +3,11 @@ import type { BuildingType } from '../api/client';
 const LABELS: Record<BuildingType, string> = {
   SFH: 'Single Family',
   ADU: 'ADU',
-  GH: 'Guest House',
-  DUP: 'Duplex',
+  'Guest House': 'Guest House',
+  Duplex: 'Duplex',
 };
 
-const ALL_TYPES: BuildingType[] = ['SFH', 'ADU', 'GH', 'DUP'];
+const ALL_TYPES: BuildingType[] = ['SFH', 'ADU', 'Guest House', 'Duplex'];
 
 interface Props {
   selectedType: BuildingType;

@@ -7,8 +7,8 @@ import { toTitleCase } from '../utils/format';
 const TYPE_LABELS: Record<BuildingType, string> = {
   SFH: 'Single Family Home',
   ADU: 'Accessory Dwelling Unit',
-  GH: 'Guest House',
-  DUP: 'Duplex',
+  'Guest House': 'Guest House',
+  Duplex: 'Duplex',
 };
 
 interface Props {
