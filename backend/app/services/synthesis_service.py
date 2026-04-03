@@ -4,6 +4,8 @@ import json
 import logging
 from dataclasses import dataclass, field
 
+import anthropic
+
 from backend.app.prompts.synthesis import SYSTEM_PROMPT, build_user_prompt
 
 logger = logging.getLogger(__name__)
@@ -108,7 +110,7 @@ class SynthesisService:
                 messages=[{"role": "user", "content": user_prompt}],
             )
             response_text = response.content[0].text
-        except Exception:
+        except (anthropic.APIError, anthropic.APIConnectionError):
             logger.exception("Claude API call failed during synthesis")
             return _degraded_result()
 
