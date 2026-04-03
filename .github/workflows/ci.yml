@@ -45,17 +45,22 @@ jobs:
           aws-region: us-west-2
 
       - name: Upload frontend to S3
-        run: |
-          tar czf frontend-dist.tar.gz -C frontend/dist .
-          aws s3 cp frontend-dist.tar.gz s3://${{ secrets.PDF_BUCKET }}/deploys/frontend-dist.tar.gz
+        run: aws s3 sync frontend/dist s3://${{ secrets.PDF_BUCKET }}/deploys/frontend-dist --delete
 
-      - name: Deploy backend + frontend via SSM
+      - name: Invalidate CloudFront cache
         run: |
-          BUCKET="${{ secrets.PDF_BUCKET }}"
+          if [ -n "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
+              --paths "/*"
+          fi
+
+      - name: Deploy backend via SSM
+        run: |
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d && aws s3 cp s3://${BUCKET}/deploys/frontend-dist.tar.gz /tmp/frontend-dist.tar.gz && rm -rf /opt/app/frontend-dist && mkdir -p /opt/app/frontend-dist && tar xzf /tmp/frontend-dist.tar.gz -C /opt/app/frontend-dist\"]" \
+            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d\"]" \
             --query "Command.CommandId" \
             --output text)
 
