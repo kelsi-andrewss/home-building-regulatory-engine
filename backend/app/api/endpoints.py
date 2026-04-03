@@ -354,6 +354,8 @@ async def get_parcel(
 
     # Cache miss or stale -- fetch fresh
     try:
+        # TODO: APN is passed as address — lookup_by_address geocodes it, which works
+        # but is fragile. A dedicated APN lookup would be more reliable.
         parcel_data = await parcel_svc.lookup_by_address(apn)
     except Exception as exc:
         logger.error("ParcelService lookup failed: %s", exc)
@@ -380,18 +382,29 @@ async def get_parcel(
         await db.flush()
 
     zoning = parcel_data.zoning
-    zone_row = Zone(
-        parcel_id=parcel_row.id,
-        zone_complete=zoning.zone_complete,
-        zone_class=zoning.zone_class,
-        height_district=parse_zone(zoning.zone_complete).height_district,
-        general_plan_land_use=zoning.general_plan_land_use,
-        specific_plan_name=zoning.specific_plan,
-        historic_overlay=zoning.hpoz,
-        fetched_at=now,
+    result = await db.execute(
+        select(Zone).where(
+            Zone.parcel_id == parcel_row.id,
+            Zone.zone_complete == zoning.zone_complete,
+        )
     )
-    db.add(zone_row)
-    await db.flush()
+    zone_row = result.scalars().first()
+    if not zone_row:
+        zone_row = Zone(
+            parcel_id=parcel_row.id,
+            zone_complete=zoning.zone_complete,
+            zone_class=zoning.zone_class,
+            height_district=parse_zone(zoning.zone_complete).height_district,
+            general_plan_land_use=zoning.general_plan_land_use,
+            specific_plan_name=zoning.specific_plan,
+            historic_overlay=zoning.hpoz,
+            fetched_at=now,
+        )
+        db.add(zone_row)
+        await db.flush()
+    else:
+        zone_row.fetched_at = now
+        await db.flush()
 
     parcel_resp = _to_parcel_data(parcel_row)
     parcel_resp.geometry = parcel_data.geometry
