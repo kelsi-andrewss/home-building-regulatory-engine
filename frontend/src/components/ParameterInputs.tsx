@@ -8,70 +8,53 @@ export default function ParameterInputs() {
     dispatch({ type: 'SET_PARAMS', payload: { [field]: value } });
   }
 
-  const borderColor = isDirty ? '#f59e0b' : '#d1d5db';
-
-  const inputStyle: React.CSSProperties = {
-    width: '72px',
-    padding: '4px 8px',
-    border: `1.5px solid ${borderColor}`,
-    borderRadius: '6px',
-    fontSize: '13px',
-    outline: 'none',
-    textAlign: 'center',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: '11px',
-    color: '#6b7280',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  };
-
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
-        padding: '10px 0',
-        marginBottom: '12px',
-        borderBottom: '1px solid #e5e7eb',
+        gap: '16px',
+        padding: '12px 0',
+        marginBottom: '16px',
+        borderBottom: '1px solid var(--border-color)',
         flexWrap: 'wrap',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <label style={labelStyle}>Beds</label>
+      <div className="param-input-group">
+        <label className="param-label">Beds</label>
         <input
           type="number"
           min={0}
           value={projectParams.bedrooms ?? ''}
           onChange={(e) => handleChange('bedrooms', e.target.value)}
-          style={inputStyle}
+          className="param-input"
+          style={{ borderColor: isDirty ? '#f59e0b' : 'var(--border-color)' }}
           aria-label="Bedrooms"
         />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <label style={labelStyle}>Baths</label>
+      <div className="param-input-group">
+        <label className="param-label">Baths</label>
         <input
           type="number"
           min={0}
           value={projectParams.bathrooms ?? ''}
           onChange={(e) => handleChange('bathrooms', e.target.value)}
-          style={inputStyle}
+          className="param-input"
+          style={{ borderColor: isDirty ? '#f59e0b' : 'var(--border-color)' }}
           aria-label="Bathrooms"
         />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <label style={labelStyle}>Sqft</label>
+      <div className="param-input-group">
+        <label className="param-label">Sqft</label>
         <input
           type="number"
           min={0}
           value={projectParams.sqft ?? ''}
           onChange={(e) => handleChange('sqft', e.target.value)}
-          style={{ ...inputStyle, width: '88px' }}
+          className="param-input"
+          style={{ width: '90px', borderColor: isDirty ? '#f59e0b' : 'var(--border-color)' }}
           aria-label="Proposed square footage"
         />
       </div>
@@ -80,37 +63,39 @@ export default function ParameterInputs() {
         onClick={reassess}
         disabled={loading || !isDirty}
         title="Re-assess with new parameters"
-        aria-label="Re-assess"
+        className="btn-secondary"
         style={{
-          width: '32px',
-          height: '32px',
+          width: '36px',
+          height: '36px',
           borderRadius: '50%',
-          border: '1.5px solid #d1d5db',
-          background: loading || !isDirty ? '#f3f4f6' : '#fff',
-          cursor: loading || !isDirty ? 'not-allowed' : 'pointer',
+          padding: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '14px',
-          color: loading || !isDirty ? '#9ca3af' : '#3b82f6',
-          marginTop: '14px',
-          flexShrink: 0,
+          marginTop: '18px',
+          color: isDirty ? 'var(--primary)' : 'var(--text-muted)',
+          borderColor: isDirty ? 'var(--primary)' : 'var(--border-color)',
+          background: isDirty ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
         }}
       >
-        {'\u21BB'}
+        {loading ? <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }} /> : '\u21BB'}
       </button>
 
       {isDirty && (
-        <span
+        <div
           style={{
             fontSize: '11px',
-            color: '#f59e0b',
-            fontWeight: 600,
-            marginTop: '14px',
+            color: '#d97706',
+            fontWeight: 700,
+            marginTop: '18px',
+            background: '#fffbeb',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            border: '1px solid #fde68a',
           }}
         >
-          Parameters changed
-        </span>
+          Changed
+        </div>
       )}
     </div>
   );

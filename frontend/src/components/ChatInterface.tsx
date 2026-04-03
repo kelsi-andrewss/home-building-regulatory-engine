@@ -25,7 +25,7 @@ export default function ChatInterface() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height =
-        Math.min(textareaRef.current.scrollHeight, 96) + 'px';
+        Math.min(textareaRef.current.scrollHeight, 120) + 'px';
     }
   }, [input]);
 
@@ -90,29 +90,11 @@ export default function ChatInterface() {
 
   const disabled = !assessment;
 
-  // FAB toggle button
   if (!isOpen) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          width: '48px',
-          height: '48px',
-          borderRadius: '50%',
-          background: '#3b82f6',
-          color: '#fff',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: '20px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          zIndex: 50,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        className="chat-fab"
         title="Open chat"
         aria-label="Open chat"
       >
@@ -122,52 +104,23 @@ export default function ChatInterface() {
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        width: '380px',
-        height: '100vh',
-        background: '#fff',
-        borderLeft: '1px solid #e5e7eb',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 40,
-        boxShadow: '-4px 0 12px rgba(0,0,0,0.08)',
-      }}
-    >
+    <div className="chat-window">
       {/* Header */}
-      <div
-        style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid #e5e7eb',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: '#f9fafb',
-        }}
-      >
+      <div className="chat-header">
         <div>
-          <div style={{ fontWeight: 600, fontSize: '14px', color: '#111827' }}>
-            Follow-up Chat
+          <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-main)' }}>
+            Regulatory Assistant
           </div>
           {assessment && (
-            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-              {assessment.parcel.address} &middot; {assessment.zoning.zone_class}
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>
+              {assessment.parcel.address}
             </div>
           )}
         </div>
         <button
           onClick={() => setIsOpen(false)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '18px',
-            color: '#6b7280',
-            padding: '4px',
-          }}
+          className="btn-secondary"
+          style={{ padding: '4px 8px', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           aria-label="Close chat"
         >
           &times;
@@ -175,119 +128,66 @@ export default function ChatInterface() {
       </div>
 
       {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '12px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-        }}
-      >
+      <div className="chat-messages">
         {disabled && (
-          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '14px', marginTop: '40px' }}>
-            Run an assessment first
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px', marginTop: '60px' }}>
+            <div style={{ fontSize: '24px', marginBottom: '12px' }}>👋</div>
+            Please select a parcel to start chatting.
           </div>
         )}
         {messages.map((msg, i) => (
           <div
             key={i}
-            style={{
-              alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '85%',
-            }}
+            className={`message ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}
           >
-            <div
-              data-testid={`message-${msg.role}`}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '12px',
-                fontSize: '13px',
-                lineHeight: 1.5,
-                background: msg.role === 'user' ? '#3b82f6' : '#f3f4f6',
-                color: msg.role === 'user' ? '#fff' : '#111827',
-              }}
-            >
-              {msg.role === 'assistant'
-                ? parseCitations(msg.content).map((part, j) =>
-                    typeof part === 'string' ? (
-                      <span key={j}>{part}</span>
-                    ) : (
-                      <span
-                        key={j}
-                        style={{
-                          display: 'inline-block',
-                          padding: '0 6px',
-                          margin: '0 2px',
-                          borderRadius: '8px',
-                          background: '#dbeafe',
-                          color: '#1d4ed8',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        [{part.label}]
-                      </span>
-                    ),
-                  )
-                : msg.content}
-            </div>
+            {msg.role === 'assistant'
+              ? parseCitations(msg.content).map((part, j) =>
+                  typeof part === 'string' ? (
+                    <span key={j}>{part}</span>
+                  ) : (
+                    <span
+                      key={j}
+                      style={{
+                        display: 'inline-block',
+                        padding: '0 6px',
+                        margin: '0 2px',
+                        borderRadius: '6px',
+                        background: 'rgba(37, 99, 235, 0.1)',
+                        color: 'var(--primary)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'help',
+                      }}
+                    >
+                      [{part.label}]
+                    </span>
+                  ),
+                )
+              : msg.content}
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div
-        style={{
-          padding: '12px 16px',
-          borderTop: '1px solid #e5e7eb',
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'flex-end',
-        }}
-      >
+      <div className="chat-input-area">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={disabled ? 'Run an assessment first' : 'Ask a follow-up question...'}
+          placeholder={disabled ? 'Select an address...' : 'Ask about local regulations...'}
           rows={1}
-          style={{
-            flex: 1,
-            resize: 'none',
-            border: '1px solid #d1d5db',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            fontSize: '13px',
-            lineHeight: 1.5,
-            outline: 'none',
-            fontFamily: 'inherit',
-            minHeight: '36px',
-            maxHeight: '96px',
-          }}
+          className="chat-textarea"
         />
         <button
           onClick={sendMessage}
           disabled={disabled || isStreaming || !input.trim()}
-          style={{
-            background: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            cursor: disabled || isStreaming || !input.trim() ? 'not-allowed' : 'pointer',
-            opacity: disabled || isStreaming || !input.trim() ? 0.5 : 1,
-            fontSize: '13px',
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-          }}
+          className="btn-primary"
+          style={{ padding: '10px 16px', borderRadius: 'var(--radius-md)' }}
         >
-          Send
+          {isStreaming ? '...' : 'Send'}
         </button>
       </div>
     </div>
