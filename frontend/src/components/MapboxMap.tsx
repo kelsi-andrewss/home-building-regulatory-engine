@@ -246,6 +246,38 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         ref={containerRef}
         style={{ width: '100%', height: '100%' }}
       />
+      {assessment && (assessment.parcel.existing_units != null || assessment.parcel.existing_sqft != null) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 80,
+            left: 16,
+            zIndex: 2,
+            background: 'rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 16,
+            border: '1px solid rgba(0,0,0,0.05)',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+            padding: '16px 20px',
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#334155',
+            animation: 'slideUp 0.3s ease-out',
+          }}
+        >
+          <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 700 }}>Existing Structure</div>
+          {assessment.parcel.existing_units != null && (
+            <div style={{ marginBottom: 4 }}>
+              Units: {assessment.parcel.existing_units.toLocaleString()}
+            </div>
+          )}
+          {assessment.parcel.existing_sqft != null && (
+            <div>
+              Sq Ft: {assessment.parcel.existing_sqft.toLocaleString()}
+            </div>
+          )}
+        </div>
+      )}
       {assessment && (
         <div
           style={{
