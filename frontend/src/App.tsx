@@ -10,12 +10,18 @@ import MapboxMap from './components/MapboxMap';
 import AdminDashboard from './pages/AdminDashboard';
 import { AssessmentProvider, useAssessment } from './context/AssessmentContext';
 
+interface ZoneError {
+  address: string;
+  detail: string;
+}
+
 interface AppState {
   assessment: AssessmentResponse | null;
   designConstraints: DesignConstraintResponse | null;
   selectedType: BuildingType;
   isSearching: boolean;
   hoveredConstraint: string | null;
+  zoneError: ZoneError | null;
 }
 
 type Action =
@@ -23,6 +29,7 @@ type Action =
   | { type: 'SET_ASSESSMENT'; payload: AssessmentResponse }
   | { type: 'SET_DESIGN_CONSTRAINTS'; payload: DesignConstraintResponse }
   | { type: 'SEARCH_FAILED' }
+  | { type: 'SET_ZONE_ERROR'; payload: ZoneError }
   | { type: 'SET_BUILDING_TYPE'; payload: BuildingType }
   | { type: 'SET_HOVERED_CONSTRAINT'; payload: string | null };
 
@@ -32,18 +39,21 @@ const initialState: AppState = {
   selectedType: 'SFH',
   isSearching: false,
   hoveredConstraint: null,
+  zoneError: null,
 };
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SELECT_PARCEL':
-      return { ...state, isSearching: true };
+      return { ...state, isSearching: true, zoneError: null };
     case 'SET_ASSESSMENT':
-      return { ...state, isSearching: false, assessment: action.payload, designConstraints: null };
+      return { ...state, isSearching: false, assessment: action.payload, designConstraints: null, zoneError: null };
     case 'SET_DESIGN_CONSTRAINTS':
       return { ...state, designConstraints: action.payload };
     case 'SEARCH_FAILED':
       return { ...state, isSearching: false };
+    case 'SET_ZONE_ERROR':
+      return { ...state, isSearching: false, assessment: null, zoneError: action.payload };
     case 'SET_BUILDING_TYPE':
       return { ...state, selectedType: action.payload };
     case 'SET_HOVERED_CONSTRAINT':
@@ -99,8 +109,13 @@ function MainApp() {
         console.error('Design constraints fetch failed:', dcErr);
       }
     } catch (err) {
-      console.error('Assessment failed:', err);
-      dispatch({ type: 'SEARCH_FAILED' });
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('not supported')) {
+        dispatch({ type: 'SET_ZONE_ERROR', payload: { address: candidate.address, detail: message } });
+      } else {
+        console.error('Assessment failed:', err);
+        dispatch({ type: 'SEARCH_FAILED' });
+      }
     }
   }
 
@@ -143,7 +158,25 @@ function MainApp() {
             </div>
           )}
 
-          {!state.assessment && !state.isSearching && (
+          {state.zoneError && (
+            <div style={{ marginTop: '24px', padding: '20px', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-main)' }}>Zone Not Supported</span>
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                <div style={{ marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{state.zoneError.address}</span>
+                </div>
+                <div>{state.zoneError.detail}</div>
+                <div style={{ marginTop: '12px', padding: '12px', background: 'var(--bg-main)', borderRadius: 'var(--radius-md)', fontSize: '12px' }}>
+                  This engine currently supports LA residential zones only: RE, RS, R1–R4, and RD zones.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!state.assessment && !state.zoneError && !state.isSearching && (
             <div style={{ marginTop: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '15px', lineHeight: 1.6 }}>
               Enter a property address to analyze development potential and building constraints.
             </div>
