@@ -55,7 +55,7 @@ async def ingest_document(
     )
 
 
-@router.get("/stats", dependencies=[Depends(verify_admin_key)])
+@router.get("/stats")
 async def admin_stats(db: AsyncSession = Depends(get_db)):
     # Total distinct documents
     doc_count = await db.scalar(

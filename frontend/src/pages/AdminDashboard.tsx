@@ -76,7 +76,12 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`${BASE_URL}/admin/ingest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(import.meta.env.VITE_ADMIN_API_KEY
+            ? { Authorization: `Bearer ${import.meta.env.VITE_ADMIN_API_KEY}` }
+            : {}),
+        },
         body: JSON.stringify({
           name: ingestForm.name,
           url: ingestForm.url,
