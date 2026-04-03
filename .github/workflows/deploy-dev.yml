@@ -73,7 +73,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.DEV_EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"export HOME=/root && mkdir -p /opt/app && cd /opt/app && (test -d repo/.git && echo 'Repo exists' || git clone https://github.com/kelsi-andrewss/home-building-regulatory-engine.git repo) && git config --global --add safe.directory /opt/app/repo && cd repo && git fetch origin && git checkout dev && git pull origin dev && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && cp repo/Dockerfile . && (dnf install -y docker-buildx-plugin 2>/dev/null || true) && docker-compose build --no-cache backend && docker-compose up -d\"]" \
+            --parameters "commands=[\"export HOME=/root && mkdir -p /opt/app && cd /opt/app && (test -d repo/.git && echo 'Repo exists' || git clone https://github.com/kelsi-andrewss/home-building-regulatory-engine.git repo) && git config --global --add safe.directory /opt/app/repo && cd repo && git fetch origin && git checkout dev && git pull origin dev && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && cp repo/Dockerfile . && docker build --no-cache -t app-backend -f Dockerfile . && docker-compose up -d\"]" \
             --query "Command.CommandId" \
             --output text)
 
