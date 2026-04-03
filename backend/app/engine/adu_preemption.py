@@ -4,13 +4,15 @@ from dataclasses import dataclass, field
 
 from backend.app.engine.rule_engine import Confidence, ResolvedConstraint
 
-# CA Gov. Code SS65852.2 state law floor constants
-ADU_SETBACK_MAX = 4.0
-ADU_HEIGHT_BASE = 16.0
-ADU_HEIGHT_TRANSIT = 18.0
-ADU_HEIGHT_ATTACHED = 25.0
-ADU_SIZE_FLOOR = 800.0
-ADU_SIZE_MAX_DETACHED = 1200.0
+# CA Gov. Code SS65852.2 — update when legislation changes
+STATE_LAW = {
+    "setback_max": 4.0,
+    "height_base": 16.0,
+    "height_transit": 18.0,
+    "height_attached": 25.0,
+    "size_floor": 800.0,
+    "size_max_detached": 1200.0,
+}
 
 _SOURCE = "CA Gov. Code SS65852.2"
 _CITATION = "Gov. Code SS65852.2 (AB 68, SB 13, AB 881, SB 897)"
@@ -39,11 +41,11 @@ def apply_adu_preemption(
     If local is more restrictive, state law preempts.
     """
     if attached:
-        state_height = ADU_HEIGHT_ATTACHED
+        state_height = STATE_LAW["height_attached"]
     elif near_transit:
-        state_height = ADU_HEIGHT_TRANSIT
+        state_height = STATE_LAW["height_transit"]
     else:
-        state_height = ADU_HEIGHT_BASE
+        state_height = STATE_LAW["height_base"]
 
     result_constraints: list[ResolvedConstraint] = []
     preemptions: list[str] = []
@@ -56,18 +58,18 @@ def apply_adu_preemption(
 
         if ct in ("setback_side", "setback_rear"):
             # State says city can't require MORE than 4'. If local > 4', override.
-            if local.value > ADU_SETBACK_MAX:
+            if local.value > STATE_LAW["setback_max"]:
                 preemptions.append(
-                    f"{ct}: local {local.value}' -> state max {ADU_SETBACK_MAX}' "
+                    f"{ct}: local {local.value}' -> state max {STATE_LAW["setback_max"]}' "
                     f"(local was more restrictive)"
                 )
                 result_constraints.append(ResolvedConstraint(
                     constraint_type=ct,
-                    value=ADU_SETBACK_MAX,
+                    value=STATE_LAW["setback_max"],
                     unit="ft",
                     confidence=Confidence.VERIFIED,
                     citation=_CITATION,
-                    explanation=f"State law caps ADU {ct} at {ADU_SETBACK_MAX}'",
+                    explanation=f"State law caps ADU {ct} at {STATE_LAW["setback_max"]}'",
                     source="adu_state_law",
                 ))
             else:
@@ -100,22 +102,22 @@ def apply_adu_preemption(
     if "size_min" not in seen_types:
         result_constraints.append(ResolvedConstraint(
             constraint_type="size_min",
-            value=ADU_SIZE_FLOOR,
+            value=STATE_LAW["size_floor"],
             unit="sf",
             confidence=Confidence.VERIFIED,
             citation=_CITATION,
-            explanation=f"State law guarantees {ADU_SIZE_FLOOR} sf minimum ADU",
+            explanation=f"State law guarantees {STATE_LAW["size_floor"]} sf minimum ADU",
             source="adu_state_law",
         ))
 
     if "size_max_detached" not in seen_types:
         result_constraints.append(ResolvedConstraint(
             constraint_type="size_max_detached",
-            value=ADU_SIZE_MAX_DETACHED,
+            value=STATE_LAW["size_max_detached"],
             unit="sf",
             confidence=Confidence.VERIFIED,
             citation=_CITATION,
-            explanation=f"State law allows up to {ADU_SIZE_MAX_DETACHED} sf detached ADU",
+            explanation=f"State law allows up to {STATE_LAW["size_max_detached"]} sf detached ADU",
             source="adu_state_law",
         ))
 
