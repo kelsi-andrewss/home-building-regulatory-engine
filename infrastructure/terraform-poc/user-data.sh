@@ -19,9 +19,12 @@ cd /opt/app
 ANTHROPIC_API_KEY=$(aws ssm get-parameter --name "/${project}/anthropic-api-key" --with-decryption --query "Parameter.Value" --output text --region ${aws_region})
 MAPBOX_TOKEN=$(aws ssm get-parameter --name "/${project}/mapbox-token" --with-decryption --query "Parameter.Value" --output text --region ${aws_region})
 
+# Generate a random database password
+DB_PASSWORD=$(openssl rand -base64 24)
+
 # Write environment file
 cat > .env << ENVEOF
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/hbre
+DATABASE_URL=postgresql+asyncpg://postgres:$DB_PASSWORD@db:5432/hbre
 ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 VITE_MAPBOX_TOKEN=$MAPBOX_TOKEN
 VITE_API_BASE_URL=/api
@@ -30,13 +33,13 @@ PDF_BUCKET=${pdf_bucket}
 ENVEOF
 
 # Write docker-compose.yml
-cat > docker-compose.yml << 'DCEOF'
+cat > docker-compose.yml << DCEOF
 services:
   db:
     image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: $DB_PASSWORD
       POSTGRES_DB: hbre
     volumes:
       - pgdata:/var/lib/postgresql/data
