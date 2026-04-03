@@ -26,8 +26,12 @@ def parse_zone(zone_cmplt: str) -> ParsedZone:
     # Strip Q-condition prefix: [Q]R1-1 -> R1-1
     working = re.sub(r"^\[Q\]", "", working)
 
-    # Strip known suffix overlays: R1-1-CPIO -> R1-1
-    working = re.sub(r"-(?:CPIO|CUGU|CDO|HPOZ|RFA|NSO)$", "", working)
+    # Strip known suffix overlays: R1-1-CPIO-RFA -> R1-1
+    while True:
+        stripped = re.sub(r"-(?:CPIO|CUGU|CDO|HPOZ|RFA|NSO)$", "", working)
+        if stripped == working:
+            break
+        working = stripped
 
     # Strip D-limitation suffix: C2-2D -> C2-2
     working = re.sub(r"D$", "", working)
