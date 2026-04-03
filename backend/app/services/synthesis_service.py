@@ -100,7 +100,7 @@ class SynthesisService:
         user_prompt = build_user_prompt(parcel, constraints, specific_plan, overlays)
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model=MODEL,
                 max_tokens=2048,
                 temperature=0,
