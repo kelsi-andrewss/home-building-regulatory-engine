@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import anthropic
@@ -108,6 +109,7 @@ class ClaudeClient:
                         e.status_code, attempt + 1, max_retries,
                     )
                     last_error = e
+                    time.sleep(2 ** attempt)
                     continue
                 raise
             except anthropic.APIConnectionError as e:
@@ -117,6 +119,7 @@ class ClaudeClient:
                         attempt + 1, max_retries,
                     )
                     last_error = e
+                    time.sleep(2 ** attempt)
                     continue
                 raise
 
