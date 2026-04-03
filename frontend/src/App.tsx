@@ -117,35 +117,39 @@ function MainApp() {
     <div className="app-container">
       {/* Sidebar */}
       <aside className="sidebar">
-        <h1 className="sidebar-title">
-          Regulatory Engine
-        </h1>
-        <AddressSearch onSelect={handleParcelSelect} />
+        <div className="sidebar-content">
+          <header>
+            <h1 className="sidebar-title">Regulatory Engine</h1>
+            <p className="sidebar-subtitle">LA County Residential Building Code Search</p>
+          </header>
+          
+          <AddressSearch onSelect={handleParcelSelect} />
 
-        {state.assessment && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <BuildingTypeSelector
-              selectedType={state.selectedType}
-              availableTypes={availableTypes}
-              onSelect={(t) => dispatch({ type: 'SET_BUILDING_TYPE', payload: t })}
-            />
-            <BuildabilityReport
-              assessment={state.assessment}
-              selectedType={state.selectedType}
-              designConstraints={state.designConstraints}
-              onHoverConstraint={(name) =>
-                dispatch({ type: 'SET_HOVERED_CONSTRAINT', payload: name })
-              }
-            />
-            <CitationsPanel constraints={currentConstraints} />
-          </div>
-        )}
+          {state.assessment && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+              <BuildingTypeSelector
+                selectedType={state.selectedType}
+                availableTypes={availableTypes}
+                onSelect={(t) => dispatch({ type: 'SET_BUILDING_TYPE', payload: t })}
+              />
+              <BuildabilityReport
+                assessment={state.assessment}
+                selectedType={state.selectedType}
+                designConstraints={state.designConstraints}
+                onHoverConstraint={(name) =>
+                  dispatch({ type: 'SET_HOVERED_CONSTRAINT', payload: name })
+                }
+              />
+              <CitationsPanel constraints={currentConstraints} />
+            </div>
+          )}
 
-        {!state.assessment && !state.isSearching && (
-          <div style={{ marginTop: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
-            Search for an address to get started.
-          </div>
-        )}
+          {!state.assessment && !state.isSearching && (
+            <div style={{ marginTop: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '15px', lineHeight: 1.6 }}>
+              Enter a property address to analyze development potential and building constraints.
+            </div>
+          )}
+        </div>
       </aside>
 
       {/* Map panel */}

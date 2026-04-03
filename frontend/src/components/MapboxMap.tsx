@@ -76,8 +76,8 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         type: 'fill',
         source: 'parcel',
         paint: {
-          'fill-color': '#3b82f6',
-          'fill-opacity': 0.1,
+          'fill-color': '#4f46e5',
+          'fill-opacity': 0.05,
         },
       });
 
@@ -86,8 +86,8 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         type: 'fill',
         source: 'design-envelope',
         paint: {
-          'fill-color': '#f97316',
-          'fill-opacity': 0.15,
+          'fill-color': '#4f46e5',
+          'fill-opacity': 0.1,
         },
       });
 
@@ -96,7 +96,7 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         type: 'line',
         source: 'parcel',
         paint: {
-          'line-color': '#3b82f6',
+          'line-color': '#4f46e5',
           'line-width': 2,
         },
       });
@@ -108,7 +108,7 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         paint: {
           'line-color': '#10b981',
           'line-width': 2,
-          'line-dasharray': [4, 4],
+          'line-dasharray': [3, 2],
         },
       });
 
@@ -117,8 +117,8 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         type: 'line',
         source: 'design-envelope',
         paint: {
-          'line-color': '#a855f7',
-          'line-width': 2.5,
+          'line-color': '#4f46e5',
+          'line-width': 2,
         },
       });
 
@@ -128,13 +128,15 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         source: 'parcel',
         layout: {
           'text-field': ['get', 'zone_complete'],
-          'text-size': 14,
+          'text-size': 13,
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
           'text-anchor': 'center',
+          'text-letter-spacing': 0.05,
         },
         paint: {
-          'text-color': '#1e3a5f',
+          'text-color': '#4f46e5',
           'text-halo-color': '#ffffff',
-          'text-halo-width': 1,
+          'text-halo-width': 2,
         },
       });
 
@@ -202,7 +204,7 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         [bbox[0], bbox[1]],
         [bbox[2], bbox[3]],
       ],
-      { padding: 80 }
+      { padding: { top: 60, bottom: 60, left: 480, right: 60 }, duration: 2000 }
     );
   }, [assessment, designConstraints]);
 
@@ -231,10 +233,10 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
 
     if (hoveredConstraint && SETBACK_CONSTRAINTS.has(hoveredConstraint)) {
       map.setPaintProperty('buildable-envelope', 'line-width', 4);
-      map.setPaintProperty('buildable-envelope', 'line-opacity', 1);
+      map.setPaintProperty('buildable-envelope', 'line-color', '#059669');
     } else {
       map.setPaintProperty('buildable-envelope', 'line-width', 2);
-      map.setPaintProperty('buildable-envelope', 'line-opacity', 0.8);
+      map.setPaintProperty('buildable-envelope', 'line-color', '#10b981');
     }
   }, [hoveredConstraint]);
 
@@ -248,36 +250,40 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         <div
           style={{
             position: 'absolute',
-            bottom: 24,
-            left: 24,
+            bottom: 32,
+            right: 32,
             zIndex: 2,
-            background: 'rgba(255,255,255,0.9)',
-            backdropFilter: 'blur(4px)',
-            borderRadius: 8,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            padding: '12px 16px',
-            fontSize: 13,
+            background: 'rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 16,
+            border: '1px solid rgba(0,0,0,0.05)',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+            padding: '16px 20px',
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#334155',
+            animation: 'slideUp 0.3s ease-out',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span
               style={{
                 display: 'inline-block',
-                width: 16,
-                height: 16,
-                background: '#3b82f61a',
-                border: '2px solid #3b82f6',
-                borderRadius: 2,
+                width: 14,
+                height: 14,
+                background: 'rgba(79, 70, 229, 0.1)',
+                border: '2px solid #4f46e5',
+                borderRadius: 4,
                 flexShrink: 0,
               }}
             />
             <span>Parcel Boundary</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span
               style={{
                 display: 'inline-block',
-                width: 16,
+                width: 14,
                 height: 0,
                 borderTop: '2px dashed #10b981',
                 flexShrink: 0,
@@ -285,15 +291,15 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
             />
             <span>Setback Area</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span
               style={{
                 display: 'inline-block',
-                width: 16,
-                height: 16,
-                background: '#f9731626',
-                border: '2px solid #a855f7',
-                borderRadius: 2,
+                width: 14,
+                height: 14,
+                background: 'rgba(79, 70, 229, 0.2)',
+                border: '2px solid #4f46e5',
+                borderRadius: 4,
                 flexShrink: 0,
               }}
             />
