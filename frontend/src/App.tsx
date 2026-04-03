@@ -5,7 +5,6 @@ import { assessParcel, fetchDesignConstraints } from './api/client';
 import AddressSearch from './components/AddressSearch';
 import BuildingTypeSelector from './components/BuildingTypeSelector';
 import BuildabilityReport from './components/BuildabilityReport';
-import ChatInterface from './components/ChatInterface';
 import CitationsPanel from './components/CitationsPanel';
 import MapboxMap from './components/MapboxMap';
 import AdminDashboard from './pages/AdminDashboard';
@@ -165,7 +164,6 @@ function MainApp() {
           </div>
         )}
       </main>
-      <ChatInterface />
     </div>
   );
 }
