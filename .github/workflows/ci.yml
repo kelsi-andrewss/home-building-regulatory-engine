@@ -27,6 +27,16 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm ci && VITE_API_BASE_URL=/api npm run build
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -34,18 +44,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
 
-      - name: Deploy via SSM
+      - name: Upload frontend to S3
         run: |
+          tar czf frontend-dist.tar.gz -C frontend/dist .
+          aws s3 cp frontend-dist.tar.gz s3://${{ secrets.PDF_BUCKET }}/deploys/frontend-dist.tar.gz
+
+      - name: Deploy backend + frontend via SSM
+        run: |
+          BUCKET="${{ secrets.PDF_BUCKET }}"
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d && (node -v 2>/dev/null | grep -qE \"v2[02468]\" || (curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - && dnf install -y nodejs)) && cd /opt/app/repo/frontend && npm ci && VITE_API_BASE_URL=/api npm run build && rm -rf /opt/app/frontend-dist && cp -r dist /opt/app/frontend-dist"]' \
+            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d && aws s3 cp s3://${BUCKET}/deploys/frontend-dist.tar.gz /tmp/frontend-dist.tar.gz && rm -rf /opt/app/frontend-dist && mkdir -p /opt/app/frontend-dist && tar xzf /tmp/frontend-dist.tar.gz -C /opt/app/frontend-dist\"]" \
             --query "Command.CommandId" \
             --output text)
 
           echo "SSM Command ID: $COMMAND_ID"
 
-          # Wait for completion (max 5 min)
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" || true
