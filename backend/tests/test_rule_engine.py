@@ -167,6 +167,28 @@ class TestConfidenceTagging:
         assert tag_confidence("specific_plan", extraction_method=None) == Confidence.UNKNOWN
 
 
+class TestProjectParams:
+    def test_sqft_caps_adu_max_size(self, resolver, r1_zone, parcel_data):
+        result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[], project_params={"sqft": 800})
+        adu = next(bt for bt in result.building_types if bt.building_type == BuildingType.ADU)
+        assert adu.max_size_sf == 800
+
+    def test_sqft_above_state_max_ignored(self, resolver, r1_zone, parcel_data):
+        result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[], project_params={"sqft": 2000})
+        adu = next(bt for bt in result.building_types if bt.building_type == BuildingType.ADU)
+        assert adu.max_size_sf == 1200
+
+    def test_no_params_default_adu_size(self, resolver, r1_zone, parcel_data):
+        result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[])
+        adu = next(bt for bt in result.building_types if bt.building_type == BuildingType.ADU)
+        assert adu.max_size_sf == 1200
+
+    def test_params_dont_affect_sfh(self, resolver, r1_zone, parcel_data):
+        result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[], project_params={"sqft": 800})
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.max_size_sf is None
+
+
 class TestBuildingTypeAllowance:
     def test_sfh_allowed_r1(self, resolver, r1_zone, parcel_data):
         result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[])

@@ -20,8 +20,9 @@ export default function ParameterInputs() {
       }}
     >
       <div className="param-input-group">
-        <label className="param-label">Bedrooms</label>
+        <label htmlFor="param-bedrooms" className="param-label">Bedrooms</label>
         <input
+          id="param-bedrooms"
           type="number"
           min={0}
           value={projectParams.bedrooms ?? ''}
@@ -32,8 +33,9 @@ export default function ParameterInputs() {
       </div>
 
       <div className="param-input-group">
-        <label className="param-label">Bathrooms</label>
+        <label htmlFor="param-bathrooms" className="param-label">Bathrooms</label>
         <input
+          id="param-bathrooms"
           type="number"
           min={0}
           value={projectParams.bathrooms ?? ''}
@@ -44,8 +46,9 @@ export default function ParameterInputs() {
       </div>
 
       <div className="param-input-group">
-        <label className="param-label">Sq Ft</label>
+        <label htmlFor="param-sqft" className="param-label">Sq Ft</label>
         <input
+          id="param-sqft"
           type="number"
           min={0}
           value={projectParams.sqft ?? ''}

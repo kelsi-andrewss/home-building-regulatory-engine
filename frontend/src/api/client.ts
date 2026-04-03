@@ -1,5 +1,5 @@
 export type Confidence = 'verified' | 'interpreted' | 'unknown';
-export type BuildingType = 'SFH' | 'ADU' | 'GH' | 'DUP';
+export type BuildingType = 'SFH' | 'ADU' | 'Guest House' | 'Duplex';
 
 export interface Constraint {
   name: string;
@@ -150,22 +150,4 @@ export async function* chatFollowup(
     if (done) break;
     yield decoder.decode(value, { stream: true });
   }
-}
-
-export async function sendFeedback(
-  assessmentId: string,
-  constraintName: string,
-  vote: 'up' | 'down' | null,
-  reason?: string,
-): Promise<void> {
-  fetch(`${BASE_URL}/feedback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      assessment_id: assessmentId,
-      constraint_name: constraintName,
-      vote,
-      ...(reason ? { reason } : {}),
-    }),
-  }).catch(() => {});
 }

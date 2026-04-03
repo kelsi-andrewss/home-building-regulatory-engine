@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -97,7 +97,7 @@ def _mock_client(response_text: str) -> MagicMock:
     client = MagicMock()
     message = MagicMock()
     message.content = [MagicMock(text=response_text)]
-    client.messages.create.return_value = message
+    client.messages.create = AsyncMock(return_value=message)
     return client
 
 

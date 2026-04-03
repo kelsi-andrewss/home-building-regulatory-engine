@@ -1,10 +1,8 @@
-name: CI
+name: Deploy Dev
 
 on:
-  pull_request:
-    branches: [main, dev]
   push:
-    branches: [main, dev]
+    branches: [dev/audit-fixes]
 
 jobs:
   test:
@@ -22,9 +20,21 @@ jobs:
       - name: Run tests
         run: uv run pytest backend/tests/ -v --ignore=backend/tests/test_ingestion.py --ignore=backend/tests/test_synthesis.py
 
-  deploy:
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: TypeScript check
+        working-directory: frontend
+        run: npm ci && npx tsc -b --noEmit
+
+  deploy-dev:
+    needs: [test, typecheck]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,22 +58,22 @@ jobs:
           aws-region: us-west-2
 
       - name: Upload frontend to S3
-        run: aws s3 sync frontend/dist s3://${{ secrets.PDF_BUCKET }}/deploys/frontend-dist --delete
+        run: aws s3 sync frontend/dist s3://${{ secrets.DEV_PDF_BUCKET }}/deploys/frontend-dist --delete
 
       - name: Invalidate CloudFront cache
         run: |
-          if [ -n "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+          if [ -n "${{ secrets.DEV_CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
             aws cloudfront create-invalidation \
-              --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
+              --distribution-id "${{ secrets.DEV_CLOUDFRONT_DISTRIBUTION_ID }}" \
               --paths "/*"
           fi
 
       - name: Deploy backend via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --instance-ids "${{ secrets.DEV_EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git pull origin main && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker-compose build --no-cache backend && docker-compose up -d\"]" \
+            --parameters "commands=[\"export HOME=/root && git config --global --add safe.directory /opt/app/repo && cd /opt/app/repo && git fetch origin && git checkout dev/audit-fixes && git pull origin dev/audit-fixes && cd /opt/app && rm -rf backend && cp -r repo/backend backend && cp repo/pyproject.toml . && docker build -t app-backend . && docker-compose up -d\"]" \
             --query "Command.CommandId" \
             --output text)
 
@@ -71,11 +81,11 @@ jobs:
 
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" || true
+            --instance-id "${{ secrets.DEV_EC2_INSTANCE_ID }}" || true
 
           STATUS=$(aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --instance-id "${{ secrets.DEV_EC2_INSTANCE_ID }}" \
             --query "Status" --output text)
 
           echo "Deploy status: $STATUS"
@@ -83,7 +93,7 @@ jobs:
           if [ "$STATUS" != "Success" ]; then
             aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
-              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --instance-id "${{ secrets.DEV_EC2_INSTANCE_ID }}" \
               --query "StandardErrorContent" --output text
             exit 1
           fi
