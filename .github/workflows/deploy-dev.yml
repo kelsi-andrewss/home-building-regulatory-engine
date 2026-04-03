@@ -38,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
@@ -61,13 +63,26 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push backend image
-        env:
-          ECR_REPOSITORY: ${{ secrets.DEV_ECR_REPOSITORY }}
+      - name: Check if backend changed
+        id: backend-changed
         run: |
-          docker build -t $ECR_REPOSITORY:dev -t $ECR_REPOSITORY:${{ github.sha }} .
-          docker push $ECR_REPOSITORY:dev
-          docker push $ECR_REPOSITORY:${{ github.sha }}
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^(backend/|Dockerfile|pyproject\.toml)'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push backend image
+        if: steps.backend-changed.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DEV_ECR_REPOSITORY }}:dev
+            ${{ secrets.DEV_ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DEV_ECR_REPOSITORY }}:dev
+          cache-to: type=inline
 
       - name: Upload frontend to S3
         run: aws s3 sync frontend/dist s3://${{ secrets.DEV_PDF_BUCKET }}/deploys/frontend-dist --delete
@@ -81,6 +96,7 @@ jobs:
           fi
 
       - name: Deploy backend via SSM
+        if: steps.backend-changed.outputs.changed == 'true'
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.DEV_ECR_REPOSITORY }}
