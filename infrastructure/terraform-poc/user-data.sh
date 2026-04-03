@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# Ensure SSM agent is running
+dnf install -y amazon-ssm-agent 2>/dev/null || true
+systemctl enable amazon-ssm-agent
+systemctl start amazon-ssm-agent
+
 # Install Docker
 dnf install -y docker git
 systemctl enable docker
