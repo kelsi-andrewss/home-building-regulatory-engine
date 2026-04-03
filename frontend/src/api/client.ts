@@ -1,5 +1,5 @@
 export type Confidence = 'verified' | 'interpreted' | 'unknown';
-export type BuildingType = 'SFH' | 'ADU' | 'GH' | 'DUP';
+export type BuildingType = 'SFH' | 'ADU' | 'Guest House' | 'Duplex';
 
 export interface Constraint {
   name: string;
