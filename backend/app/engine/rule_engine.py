@@ -389,17 +389,39 @@ class ConstraintResolver:
                 base_constraints, fragment_constraints, overlay_overrides=fragment_overrides
             )
 
-        # 4. Build per-building-type assessments
+        # 4. Compute FAR-based max buildable area for sqft validation
+        lot_area = parcel_data.get("lot_area_sf", 0)
+        proposed_sqft = (project_params or {}).get("sqft")
+        far_max = _get_constraint_value(base_constraints, "far_max", 0.0)
+        max_buildable_sf: float | None = None
+        if far_max > 0 and lot_area > 0:
+            max_buildable_sf = lot_area * far_max
+
+        sqft_exceeds = (
+            proposed_sqft is not None
+            and max_buildable_sf is not None
+            and proposed_sqft > max_buildable_sf
+        )
+        sqft_note: str | None = None
+        if sqft_exceeds:
+            sqft_note = (
+                f"Proposed {proposed_sqft:,.0f} sf exceeds max buildable area "
+                f"of {max_buildable_sf:,.0f} sf "
+                f"(FAR {far_max} \u00d7 {lot_area:,.0f} sf lot)"
+            )
+
+        # 5. Build per-building-type assessments
         summary_constraints = list(base_constraints)
         building_types: list[BuildingTypeAssessment] = []
 
-        # SFH -- always allowed in residential zones
+        # SFH -- always allowed in residential zones (unless sqft exceeds FAR limit)
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.SFH,
-            allowed=True,
+            allowed=not sqft_exceeds,
             constraints=list(base_constraints),
             max_units=1,
-            notes=None,
+            max_size_sf=max_buildable_sf,
+            notes=sqft_note,
         ))
 
         # ADU -- always allowed by state law
@@ -420,17 +442,20 @@ class ConstraintResolver:
         ))
 
         # Guest House -- same as SFH, accessory structure
+        guest_house_notes = "Accessory structure; same setback/height rules as primary dwelling"
+        if sqft_note:
+            guest_house_notes = f"{guest_house_notes}; {sqft_note}"
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.GUEST_HOUSE,
-            allowed=True,
+            allowed=not sqft_exceeds,
             constraints=list(base_constraints),
             max_units=1,
-            notes="Accessory structure; same setback/height rules as primary dwelling",
+            max_size_sf=max_buildable_sf,
+            notes=guest_house_notes,
         ))
 
         # Duplex -- only in R2+ and RD zones
         duplex_allowed = _allows_duplex(parsed_zone.zone_class)
-        lot_area = parcel_data.get("lot_area_sf", 0)
         density_rule = base_rules.get("density", {})
         density_value = density_rule.get("value", 0)
         density_unit = density_rule.get("unit", "")
@@ -439,15 +464,22 @@ class ConstraintResolver:
         if duplex_allowed and density_unit == "sf" and density_value > 0 and lot_area > 0:
             max_units_duplex = int(lot_area / density_value)
 
+        duplex_note: str | None = None
+        if not duplex_allowed:
+            duplex_note = "Not allowed in single-family zones"
+        elif sqft_note:
+            duplex_note = sqft_note
+
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.DUPLEX,
-            allowed=duplex_allowed,
+            allowed=duplex_allowed and not sqft_exceeds,
             constraints=list(base_constraints) if duplex_allowed else [],
             max_units=max_units_duplex,
-            notes="Not allowed in single-family zones" if not duplex_allowed else None,
+            max_size_sf=max_buildable_sf if duplex_allowed else None,
+            notes=duplex_note,
         ))
 
-        # 5. Calculate setback geometry
+        # 6. Calculate setback geometry
         setback_geometry = None
         parcel_geojson = parcel_data.get("geometry")
         setback_front = _get_constraint_value(base_constraints, "setback_front", 20)
