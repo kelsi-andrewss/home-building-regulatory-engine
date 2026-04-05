@@ -24,6 +24,7 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "fpdf2>=2.8",
 ]
 
 [tool.setuptools.packages.find]
@@ -32,3 +33,4 @@ include = ["backend*"]
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
+
