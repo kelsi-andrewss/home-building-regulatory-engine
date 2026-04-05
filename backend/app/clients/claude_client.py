@@ -30,11 +30,24 @@ overrides_base_zone is false.
 9. source_page: the page number this rule appears on.
 10. extraction_reasoning: 1-2 sentences explaining why you interpreted the text as \
 this specific constraint. Quote the key phrase from the source.
+11. design_standards: (ONLY for constraint_type "design_standard") An array of objects, \
+each with:
+   - category: one of [material, articulation, color, fenestration, roof]
+   - requirement_text: the requirement as stated in the source text
+   - allowed_values: array of permitted options (e.g. ["stucco", "stone", "brick"]), \
+or null if not enumerable
+   - numeric_value: numeric threshold if applicable (e.g. 30 for "30% articulation"), \
+or null
+   - numeric_unit: unit for numeric_value (e.g. "percent", "ft"), or null
+   - applies_to: what the standard applies to -- one of [facade, roof, trim, all, \
+street-facing]
+   For non-design-standard constraints, omit this field entirely.
 
 Focus on:
 - Dimensional constraints (setbacks, height limits, FAR, lot coverage, density)
 - Use restrictions (permitted, conditional, prohibited uses)
-- Design standards (materials, articulation, roof pitch, fenestration)
+- Design standards (materials, articulation, roof pitch, fenestration, color palette) \
+-- use the design_standards sub-schema above for these
 - Special triggers (thresholds that activate additional review or requirements)
 - Override behavior: does this plan REPLACE the base zone rule, or does \
 "whichever is more restrictive" apply?
@@ -63,6 +76,7 @@ class ExtractedFragment:
     source_section: str
     source_page: int
     extraction_reasoning: str
+    design_standards: list[dict] | None = None
 
 
 class ClaudeClient:
@@ -185,4 +199,5 @@ class ClaudeClient:
             source_section=raw.get("source_section", ""),
             source_page=raw.get("source_page", 0),
             extraction_reasoning=raw.get("extraction_reasoning", ""),
+            design_standards=raw.get("design_standards") if raw.get("constraint_type") == "design_standard" else None,
         )

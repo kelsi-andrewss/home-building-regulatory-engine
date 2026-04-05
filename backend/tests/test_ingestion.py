@@ -83,6 +83,48 @@ VALID_CLAUDE_RESPONSE = json.dumps([
 ])
 
 
+VALID_DESIGN_STANDARD_RESPONSE = json.dumps([
+    {
+        "constraint_type": "design_standard",
+        "value": None,
+        "unit": "",
+        "condition": None,
+        "zone_applicability": ["all"],
+        "overrides_base_zone": True,
+        "override_behavior": "replace",
+        "source_section": "Section 12.C",
+        "source_page": 24,
+        "extraction_reasoning": "Section 12.C specifies 'exterior materials shall be stucco, stone, or brick'.",
+        "design_standards": [
+            {
+                "category": "material",
+                "requirement_text": "Exterior materials shall be stucco, stone, or brick",
+                "allowed_values": ["stucco", "stone", "brick"],
+                "numeric_value": None,
+                "numeric_unit": None,
+                "applies_to": "facade",
+            },
+            {
+                "category": "articulation",
+                "requirement_text": "Minimum 30% facade articulation required",
+                "allowed_values": None,
+                "numeric_value": 30,
+                "numeric_unit": "percent",
+                "applies_to": "street-facing",
+            },
+            {
+                "category": "color",
+                "requirement_text": "Earth-tone color palette required",
+                "allowed_values": ["earth-tone"],
+                "numeric_value": None,
+                "numeric_unit": None,
+                "applies_to": "all",
+            },
+        ],
+    },
+])
+
+
 class TestExtractRuleFragments:
     def test_parses_valid_json(self):
         """Mock API response with valid JSON -> correct ExtractedFragment objects."""
@@ -296,3 +338,84 @@ class TestIngestDocumentEndToEnd:
         assert stored_fragment.confidence == "interpreted"
         assert stored_fragment.constraint_type == "height_max"
         assert stored_fragment.source_document == "Test Plan"
+
+
+class TestDesignStandardExtraction:
+    def test_parses_design_standard_with_sub_fields(self):
+        """design_standard fragment should have populated design_standards list."""
+        client = ClaudeClient(api_key="test-key")
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=VALID_DESIGN_STANDARD_RESPONSE)]
+
+        with patch.object(client.client.messages, "create", return_value=mock_response):
+            fragments = client.extract_rule_fragments(
+                text_chunk="Some design standard text",
+                document_name="Test Plan",
+                document_url="http://example.com/test.pdf",
+            )
+
+        assert len(fragments) == 1
+        frag = fragments[0]
+        assert frag.constraint_type == "design_standard"
+        assert frag.design_standards is not None
+        assert len(frag.design_standards) == 3
+        assert frag.design_standards[0]["category"] == "material"
+        assert frag.design_standards[0]["allowed_values"] == ["stucco", "stone", "brick"]
+        assert frag.design_standards[1]["category"] == "articulation"
+        assert frag.design_standards[1]["numeric_value"] == 30
+        assert frag.design_standards[2]["category"] == "color"
+
+    def test_non_design_standard_has_no_design_standards_field(self):
+        """height_max fragment should have design_standards=None even if LLM returns it."""
+        client = ClaudeClient(api_key="test-key")
+        bad_response = json.dumps([{
+            "constraint_type": "height_max",
+            "value": 33,
+            "unit": "ft",
+            "condition": None,
+            "zone_applicability": ["all"],
+            "overrides_base_zone": True,
+            "override_behavior": "replace",
+            "source_section": "Section 7",
+            "source_page": 12,
+            "extraction_reasoning": "Max height 33ft",
+            "design_standards": [{"category": "material", "requirement_text": "oops"}],
+        }])
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=bad_response)]
+
+        with patch.object(client.client.messages, "create", return_value=mock_response):
+            fragments = client.extract_rule_fragments(
+                text_chunk="text", document_name="Test", document_url="http://example.com/test.pdf",
+            )
+
+        assert len(fragments) == 1
+        assert fragments[0].constraint_type == "height_max"
+        assert fragments[0].design_standards is None
+
+    def test_design_standard_without_sub_fields_defaults_none(self):
+        """design_standard fragment with no design_standards key -> design_standards=None."""
+        client = ClaudeClient(api_key="test-key")
+        response = json.dumps([{
+            "constraint_type": "design_standard",
+            "value": None,
+            "unit": "",
+            "condition": None,
+            "zone_applicability": ["all"],
+            "overrides_base_zone": True,
+            "override_behavior": "replace",
+            "source_section": "Section 5",
+            "source_page": 8,
+            "extraction_reasoning": "Some design standard",
+        }])
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=response)]
+
+        with patch.object(client.client.messages, "create", return_value=mock_response):
+            fragments = client.extract_rule_fragments(
+                text_chunk="text", document_name="Test", document_url="http://example.com/test.pdf",
+            )
+
+        assert len(fragments) == 1
+        assert fragments[0].constraint_type == "design_standard"
+        assert fragments[0].design_standards is None
