@@ -111,6 +111,33 @@ class RuleFragment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
+    effective_date: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_fragments.id"), nullable=True
+    )
+    variance_available: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+
+
+class DesignStandard(Base):
+    __tablename__ = "design_standards"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    zone_applicability = mapped_column(JSON, nullable=False)
+    specific_plan: Mapped[str | None] = mapped_column(String, nullable=True)
+    category: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_document: Mapped[str] = mapped_column(String, nullable=False)
+    source_section: Mapped[str | None] = mapped_column(String, nullable=True)
+    confidence: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
 
 
 class SpecificPlan(Base):

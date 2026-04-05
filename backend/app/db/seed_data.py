@@ -59,6 +59,7 @@ def _build_base_zone_fragments() -> list[dict]:
             "confidence": "verified",
             "overrides_base_zone": False,
             "extracted_at": now,
+            "effective_date": datetime(2026, 1, 1),
         }
 
         fragments.append({
