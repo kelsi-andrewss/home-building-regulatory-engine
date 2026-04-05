@@ -13,6 +13,12 @@ import time
 import httpx
 import pytest
 import pytest_asyncio
+
+# Skip entire module unless explicitly opted in (requires running PostgreSQL)
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("RUN_DB_TESTS"),
+    reason="Requires running PostgreSQL (set RUN_DB_TESTS=1 and DATABASE_URL)",
+)
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
