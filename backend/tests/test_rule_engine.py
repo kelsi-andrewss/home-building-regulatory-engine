@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 
 from backend.app.engine.adu_preemption import apply_adu_preemption
@@ -7,6 +9,8 @@ from backend.app.engine.rule_engine import (
     Confidence,
     ConstraintResolver,
     ResolvedConstraint,
+    _detect_overlay_conflicts,
+    _filter_effective_rules,
     tag_confidence,
 )
 from backend.app.engine.zone_parser import ParsedZone
@@ -216,3 +220,292 @@ class TestBuildingTypeAllowance:
         result = resolver.resolve(r2_zone, parcel, rule_fragments=[])
         duplex = next(bt for bt in result.building_types if bt.building_type == BuildingType.DUPLEX)
         assert duplex.max_units == 3
+
+
+class TestEffectiveRuleFiltering:
+    def test_superseded_fragment_excluded(self):
+        fragments = [
+            {"constraint_type": "height_max", "value": 33, "superseded_by": "some-uuid"},
+            {"constraint_type": "setback_front", "value": 20},
+        ]
+        result = _filter_effective_rules(fragments)
+        assert len(result) == 1
+        assert result[0]["constraint_type"] == "setback_front"
+
+    def test_future_effective_date_excluded(self):
+        future = datetime.utcnow() + timedelta(days=30)
+        fragments = [
+            {"constraint_type": "height_max", "value": 28, "effective_date": future},
+            {"constraint_type": "setback_front", "value": 20},
+        ]
+        result = _filter_effective_rules(fragments)
+        assert len(result) == 1
+        assert result[0]["constraint_type"] == "setback_front"
+
+    def test_past_effective_date_included(self):
+        past = datetime.utcnow() - timedelta(days=30)
+        fragments = [
+            {"constraint_type": "height_max", "value": 28, "effective_date": past},
+        ]
+        result = _filter_effective_rules(fragments)
+        assert len(result) == 1
+
+    def test_no_effective_date_no_superseded_included(self):
+        fragments = [
+            {"constraint_type": "height_max", "value": 33},
+        ]
+        result = _filter_effective_rules(fragments)
+        assert len(result) == 1
+
+    def test_superseded_with_past_effective_date_still_excluded(self):
+        past = datetime.utcnow() - timedelta(days=30)
+        fragments = [
+            {"constraint_type": "height_max", "value": 33, "effective_date": past, "superseded_by": "some-uuid"},
+        ]
+        result = _filter_effective_rules(fragments)
+        assert len(result) == 0
+
+    def test_as_of_parameter_deterministic(self):
+        fixed_time = datetime(2025, 6, 1, 12, 0, 0)
+        fragments = [
+            {"constraint_type": "height_max", "value": 28, "effective_date": datetime(2025, 5, 1)},
+            {"constraint_type": "setback_front", "value": 20, "effective_date": datetime(2025, 7, 1)},
+        ]
+        result = _filter_effective_rules(fragments, as_of=fixed_time)
+        assert len(result) == 1
+        assert result[0]["constraint_type"] == "height_max"
+
+
+class TestOverlayConflictDetection:
+    def test_overlay_less_restrictive_max_flagged(self):
+        base = [ResolvedConstraint("height_max", 33, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("height_max", 45, "ft", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert "height_max" in conflicts
+        assert "45" in conflicts["height_max"]
+        assert "33" in conflicts["height_max"]
+
+    def test_overlay_more_restrictive_max_no_conflict(self):
+        base = [ResolvedConstraint("height_max", 33, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("height_max", 28, "ft", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert "height_max" not in conflicts
+
+    def test_overlay_less_restrictive_min_flagged(self):
+        base = [ResolvedConstraint("setback_front", 20, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("setback_front", 15, "ft", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert "setback_front" in conflicts
+
+    def test_overlay_more_restrictive_min_no_conflict(self):
+        base = [ResolvedConstraint("setback_front", 20, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("setback_front", 25, "ft", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert "setback_front" not in conflicts
+
+    def test_non_dimensional_constraint_no_conflict(self):
+        base = [ResolvedConstraint("density", 1, "unit/lot", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("density", 5, "unit/lot", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert "density" not in conflicts
+
+    def test_overlay_constraint_not_in_base_no_conflict(self):
+        base = [ResolvedConstraint("height_max", 33, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone")]
+        overlay = [ResolvedConstraint("far_max", 3.0, "ratio", Confidence.INTERPRETED, "SP", "overlay", "specific_plan")]
+        conflicts = _detect_overlay_conflicts(base, overlay)
+        assert len(conflicts) == 0
+
+
+class TestVarianceAndConflictNotes:
+    @pytest.fixture
+    def resolver(self):
+        return ConstraintResolver()
+
+    @pytest.fixture
+    def r1_zone(self):
+        return ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+
+    @pytest.fixture
+    def parcel_data(self):
+        return {"lot_area_sf": 7500}
+
+    def test_conflict_notes_on_less_restrictive_overlay(self, resolver, r1_zone, parcel_data):
+        """Base zone height_max=33', overlay says 45' (less restrictive) -> conflict noted, value stays 33'."""
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 45,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Hillside Overlay",
+            "extraction_reasoning": "AI extracted",
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        assert height.value == 33
+        assert height.conflict_notes is not None
+        assert "45" in height.conflict_notes
+
+    def test_no_conflict_notes_on_more_restrictive_overlay(self, resolver, r1_zone, parcel_data):
+        """Base zone height_max=33', overlay says 28' (more restrictive) -> no conflict, value is 28'."""
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 28,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Hillside Overlay",
+            "extraction_reasoning": "AI extracted",
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        assert height.value == 28
+        assert height.conflict_notes is None
+
+    def test_setback_conflict_notes(self, resolver, r1_zone, parcel_data):
+        """Base setback_front=20', overlay says 15' (less restrictive for min) -> conflict noted, value stays 20'."""
+        fragments = [{
+            "constraint_type": "setback_front",
+            "value": 15,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Test Overlay",
+            "extraction_reasoning": "AI extracted",
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        setback = next(c for c in result.summary_constraints if c.constraint_type == "setback_front")
+        assert setback.value == 20
+        assert setback.conflict_notes is not None
+
+    def test_variance_available_true_by_default(self, resolver, r1_zone, parcel_data):
+        result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[])
+        for c in result.summary_constraints:
+            assert c.variance_available is True
+
+    def test_variance_false_propagated_from_fragment(self, resolver, r1_zone, parcel_data):
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 28,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Restrictive Overlay",
+            "extraction_reasoning": "AI extracted",
+            "variance_available": False,
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        assert height.value == 28
+        assert height.variance_available is False
+
+    def test_variance_and_on_merge(self, resolver, r1_zone, parcel_data):
+        """Base variance=True, fragment variance=False -> merged result is False."""
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 45,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Test SP",
+            "extraction_reasoning": "AI extracted",
+            "variance_available": False,
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        # Base (33') wins as most restrictive, but variance_available is ANDed -> False
+        assert height.value == 33
+        assert height.variance_available is False
+
+    def test_superseded_fragment_excluded_in_resolve(self, resolver, r1_zone, parcel_data):
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 28,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Old rule",
+            "extraction_reasoning": "AI extracted",
+            "superseded_by": "some-uuid",
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        assert height.value == 33  # base zone value, superseded fragment excluded
+
+    def test_future_fragment_excluded_in_resolve(self, resolver, r1_zone, parcel_data):
+        future = datetime.utcnow() + timedelta(days=365)
+        fragments = [{
+            "constraint_type": "height_max",
+            "value": 28,
+            "unit": "ft",
+            "zone_applicability": ["R1"],
+            "source_document": "Future rule",
+            "extraction_reasoning": "AI extracted",
+            "effective_date": future,
+        }]
+        result = resolver.resolve(r1_zone, parcel_data, fragments)
+        height = next(c for c in result.summary_constraints if c.constraint_type == "height_max")
+        assert height.value == 33  # base zone value, future fragment excluded
+
+
+class TestADUVarianceDisabled:
+    def test_preempted_setback_variance_false(self):
+        """Local side setback 10' preempted to 4' -> variance_available=False."""
+        local = [
+            ResolvedConstraint("setback_side", 10, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone"),
+        ]
+        result = apply_adu_preemption(local)
+        side = next(c for c in result.constraints if c.constraint_type == "setback_side")
+        assert side.value == 4
+        assert side.variance_available is False
+
+    def test_non_preempted_preserves_variance(self):
+        """Local height 45' not preempted -> preserves incoming variance_available."""
+        local = [
+            ResolvedConstraint("height_max", 45, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone", variance_available=True),
+        ]
+        result = apply_adu_preemption(local)
+        height = next(c for c in result.constraints if c.constraint_type == "height_max")
+        assert height.value == 45
+        assert height.variance_available is True
+
+    def test_non_preempted_preserves_variance_false(self):
+        """If incoming variance_available=False and not preempted, it stays False."""
+        local = [
+            ResolvedConstraint("height_max", 45, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone", variance_available=False),
+        ]
+        result = apply_adu_preemption(local)
+        height = next(c for c in result.constraints if c.constraint_type == "height_max")
+        assert height.variance_available is False
+
+    def test_preempted_height_variance_false(self):
+        """Local height 16' preempted to state floor -> variance_available=False."""
+        local = [
+            ResolvedConstraint("height_max", 16, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone"),
+        ]
+        result = apply_adu_preemption(local)
+        height = next(c for c in result.constraints if c.constraint_type == "height_max")
+        assert height.value == 16  # 16 >= 16 so not preempted
+        assert height.variance_available is True
+
+    def test_preempted_height_below_floor_variance_false(self):
+        """Local height 14' preempted to 16' -> variance_available=False."""
+        local = [
+            ResolvedConstraint("height_max", 14, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone"),
+        ]
+        result = apply_adu_preemption(local)
+        height = next(c for c in result.constraints if c.constraint_type == "height_max")
+        assert height.value == 16
+        assert height.variance_available is False
+
+    def test_guaranteed_size_min_variance_false(self):
+        """size_min injected by ADU preemption has variance_available=False."""
+        local = [
+            ResolvedConstraint("height_max", 33, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone"),
+        ]
+        result = apply_adu_preemption(local)
+        size_min = next(c for c in result.constraints if c.constraint_type == "size_min")
+        assert size_min.variance_available is False
+
+    def test_guaranteed_size_max_detached_variance_false(self):
+        """size_max_detached injected by ADU preemption has variance_available=False."""
+        local = [
+            ResolvedConstraint("height_max", 33, "ft", Confidence.VERIFIED, "LAMC", "base", "base_zone"),
+        ]
+        result = apply_adu_preemption(local)
+        size_max = next(c for c in result.constraints if c.constraint_type == "size_max_detached")
+        assert size_max.variance_available is False
