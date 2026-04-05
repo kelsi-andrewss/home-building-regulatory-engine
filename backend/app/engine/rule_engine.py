@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 
 from backend.app.engine.zone_parser import ParsedZone
@@ -28,6 +29,8 @@ class ResolvedConstraint:
     citation: str
     explanation: str
     source: str
+    variance_available: bool = True
+    conflict_notes: str | None = None
 
 
 @dataclass
@@ -235,12 +238,62 @@ def _allows_duplex(zone_class: str) -> bool:
     return zone_class in _DUPLEX_ZONES
 
 
+def _filter_effective_rules(
+    fragments: list[dict],
+    as_of: datetime | None = None,
+) -> list[dict]:
+    """Drop fragments where superseded_by is set or effective_date is in the future."""
+    if as_of is None:
+        as_of = datetime.utcnow()
+    result = []
+    for f in fragments:
+        if f.get("superseded_by") is not None:
+            continue
+        eff = f.get("effective_date")
+        if eff is not None and eff > as_of:
+            continue
+        result.append(f)
+    return result
+
+
+def _detect_overlay_conflicts(
+    base_constraints: list[ResolvedConstraint],
+    overlay_constraints: list[ResolvedConstraint],
+) -> dict[str, str]:
+    """Compare overlay constraints against base. Return {constraint_type: conflict_note}
+    for any constraint where the overlay contradicts the base direction
+    (overlay is less restrictive than base).
+    """
+    base_index: dict[str, ResolvedConstraint] = {c.constraint_type: c for c in base_constraints}
+    conflicts: dict[str, str] = {}
+    for oc in overlay_constraints:
+        ct = oc.constraint_type
+        if ct not in base_index:
+            continue
+        bc = base_index[ct]
+        is_conflict = False
+        if ct in _MAX_CONSTRAINTS and oc.value > bc.value:
+            is_conflict = True
+        elif ct in _MIN_CONSTRAINTS and oc.value < bc.value:
+            is_conflict = True
+        if is_conflict:
+            conflicts[ct] = (
+                f"Overlay {oc.citation} sets {ct} to {oc.value}{oc.unit}, "
+                f"contradicting base {bc.citation} ({bc.value}{bc.unit}). "
+                f"Most restrictive value applied."
+            )
+    return conflicts
+
+
 def _merge_constraints(
     base: list[ResolvedConstraint],
     overlay: list[ResolvedConstraint],
     overlay_overrides: bool = False,
+    conflict_map: dict[str, str] | None = None,
 ) -> list[ResolvedConstraint]:
     """Merge two constraint lists. Most restrictive wins unless overlay_overrides=True."""
+    if conflict_map is None:
+        conflict_map = {}
     merged: dict[str, ResolvedConstraint] = {}
     for c in base:
         merged[c.constraint_type] = c
@@ -249,9 +302,15 @@ def _merge_constraints(
         ct = c.constraint_type
         if ct not in merged or overlay_overrides:
             merged[ct] = c
+            if ct in conflict_map:
+                merged[ct].conflict_notes = conflict_map[ct]
             continue
 
         existing = merged[ct]
+        # AND logic for variance_available: if either side says no, result says no
+        combined_variance = existing.variance_available and c.variance_available
+        conflict_note = conflict_map.get(ct)
+
         # Most restrictive: lower for max constraints, higher for min constraints
         if ct in _MAX_CONSTRAINTS:
             if c.value < existing.value:
@@ -263,7 +322,13 @@ def _merge_constraints(
                     citation=c.citation,
                     explanation=f"Most restrictive: {c.citation} ({c.value}) vs {existing.citation} ({existing.value})",
                     source=c.source,
+                    variance_available=combined_variance,
+                    conflict_notes=conflict_note,
                 )
+            else:
+                existing.variance_available = combined_variance
+                if conflict_note:
+                    existing.conflict_notes = conflict_note
         elif ct in _MIN_CONSTRAINTS:
             if c.value > existing.value:
                 merged[ct] = ResolvedConstraint(
@@ -274,9 +339,16 @@ def _merge_constraints(
                     citation=c.citation,
                     explanation=f"Most restrictive: {c.citation} ({c.value}) vs {existing.citation} ({existing.value})",
                     source=c.source,
+                    variance_available=combined_variance,
+                    conflict_notes=conflict_note,
                 )
+            else:
+                existing.variance_available = combined_variance
+                if conflict_note:
+                    existing.conflict_notes = conflict_note
         else:
             # Non-dimensional constraints (density, etc.): overlay wins if present
+            c.variance_available = combined_variance
             merged[ct] = c
 
     return list(merged.values())
@@ -341,6 +413,9 @@ class ConstraintResolver:
 
             base_constraints = _merge_constraints(base_constraints, hd_constraints)
 
+        # 2.5. Filter out superseded / not-yet-effective fragments
+        rule_fragments = _filter_effective_rules(rule_fragments)
+
         # 3. Filter and apply rule fragments
         # Build zone index for O(1) lookup instead of linear scan
         zone_index: dict[str, list[dict]] = {}
@@ -380,13 +455,17 @@ class ConstraintResolver:
                 citation=frag.get("source_document", ""),
                 explanation=frag.get("value_text", ""),
                 source="specific_plan" if frag.get("specific_plan") else "base_zone",
+                variance_available=frag.get("variance_available", True),
             ))
             if frag.get("overrides_base_zone"):
                 fragment_overrides = True
 
         if fragment_constraints:
+            conflict_map = _detect_overlay_conflicts(base_constraints, fragment_constraints)
             base_constraints = _merge_constraints(
-                base_constraints, fragment_constraints, overlay_overrides=fragment_overrides
+                base_constraints, fragment_constraints,
+                overlay_overrides=fragment_overrides,
+                conflict_map=conflict_map,
             )
 
         # 4. Compute FAR-based max buildable area for sqft validation

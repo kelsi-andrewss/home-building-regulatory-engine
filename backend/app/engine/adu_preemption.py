@@ -71,6 +71,7 @@ def apply_adu_preemption(
                     citation=_CITATION,
                     explanation=f"State law caps ADU {ct} at {STATE_LAW['setback_max']}'",
                     source="adu_state_law",
+                    variance_available=False,
                 ))
             else:
                 result_constraints.append(local)
@@ -91,6 +92,7 @@ def apply_adu_preemption(
                     citation=_CITATION,
                     explanation=f"State law guarantees ADU height of {state_height}'",
                     source="adu_state_law",
+                    variance_available=False,
                 ))
             else:
                 result_constraints.append(local)
@@ -108,6 +110,7 @@ def apply_adu_preemption(
             citation=_CITATION,
             explanation=f"State law guarantees {STATE_LAW['size_floor']} sf minimum ADU",
             source="adu_state_law",
+            variance_available=False,
         ))
 
     if "size_max_detached" not in seen_types:
@@ -119,6 +122,7 @@ def apply_adu_preemption(
             citation=_CITATION,
             explanation=f"State law allows up to {STATE_LAW['size_max_detached']} sf detached ADU",
             source="adu_state_law",
+            variance_available=False,
         ))
 
     return ADUPreemptionResult(
