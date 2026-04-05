@@ -21,6 +21,17 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
+
+        # Backfill columns that create_all won't add to existing tables.
+        # Each statement is idempotent (IF NOT EXISTS / already-exists check).
+        migrations = [
+            "ALTER TABLE rule_fragments ADD COLUMN IF NOT EXISTS effective_date TIMESTAMP",
+            "ALTER TABLE rule_fragments ADD COLUMN IF NOT EXISTS superseded_by UUID REFERENCES rule_fragments(id)",
+            "ALTER TABLE rule_fragments ADD COLUMN IF NOT EXISTS variance_available BOOLEAN NOT NULL DEFAULT false",
+        ]
+        for stmt in migrations:
+            await conn.execute(text(stmt))
+
     logger.info("Database tables ready")
 
     # Seed rule fragments on startup — fail hard if this doesn't work,
