@@ -7,6 +7,15 @@ export interface Constraint {
   confidence: Confidence;
   citation: string;
   explanation: string;
+  design_standards: boolean;
+  variance_available: boolean;
+  conflict_notes: string | null;
+}
+
+export interface ConflictNote {
+  constraint_name: string;
+  note: string;
+  citation: string;
 }
 
 export interface BuildingTypeAssessment {
@@ -45,6 +54,7 @@ export interface AssessmentResponse {
   setback_geometry: GeoJSON.Polygon | null;
   summary: string;
   assessment_id: string;
+  conflicts: ConflictNote[];
 }
 
 export interface GeocodingResult {

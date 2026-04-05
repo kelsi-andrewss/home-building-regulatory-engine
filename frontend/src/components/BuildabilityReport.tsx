@@ -58,6 +58,30 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
         </span>
       </div>
 
+      {assessment.conflicts.length > 0 && (
+        <div style={{
+          marginBottom: '16px',
+          padding: '14px 16px',
+          background: 'rgba(251, 191, 36, 0.08)',
+          border: '1px solid rgba(251, 191, 36, 0.25)',
+          borderRadius: '12px',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '10px', fontSize: '14px' }}>
+            Constraint Conflicts
+          </div>
+          {assessment.conflicts.map((conflict) => (
+            <div key={conflict.constraint_name} style={{ marginBottom: '8px', fontSize: '13px', lineHeight: '1.5' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{conflict.constraint_name}</span>
+              <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>{conflict.note}</span>
+              <div style={{ color: 'var(--text-muted)', fontSize: '12px', opacity: 0.7, marginTop: '2px' }}>
+                {conflict.citation}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <table className="data-table">
         <thead>
           <tr>
@@ -80,6 +104,11 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
                     <tr>
                       <td style={{ padding: '14px 8px', color: 'var(--text-main)', width: '30%', fontWeight: 500 }}>
                         {toTitleCase(c.name)}
+                        {c.variance_available && (
+                          <span className="badge badge-warning" style={{ marginLeft: '8px', fontSize: '11px' }}>
+                            Variance Possible
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '14px 8px', color: 'var(--text-main)', width: '25%', fontWeight: 600 }}>
                         {c.value}
