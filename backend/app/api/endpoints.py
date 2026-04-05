@@ -48,7 +48,7 @@ router = APIRouter(prefix="/api")
 CACHE_TTL = timedelta(hours=24)
 
 
-async def _parcel_service():
+async def _parcel_service(db: AsyncSession = Depends(get_db)):
     import httpx
 
     from backend.app.clients.cams_client import CAMSClient
@@ -61,6 +61,7 @@ async def _parcel_service():
             cams=CAMSClient(session),
             lacounty=LACountyClient(session),
             navigatela=NavigateLAClient(session),
+            db=db,
         )
     finally:
         await session.aclose()
