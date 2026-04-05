@@ -24,6 +24,15 @@ class Constraint(BaseModel):
     confidence: Literal["verified", "interpreted", "unknown"]
     citation: str
     explanation: str
+    design_standards: bool = False
+    variance_available: bool = False
+    conflict_notes: str | None = None
+
+
+class ConflictNote(BaseModel):
+    constraint_name: str
+    note: str
+    citation: str
 
 
 class BuildingTypeAssessment(BaseModel):
@@ -62,6 +71,7 @@ class AssessmentResponse(BaseModel):
     setback_geometry: dict | None = None
     summary: str
     assessment_id: uuid.UUID
+    conflicts: list[ConflictNote] = []
 
 
 class ParcelResponse(BaseModel):

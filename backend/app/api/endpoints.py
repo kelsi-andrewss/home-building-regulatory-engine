@@ -26,6 +26,7 @@ from backend.app.schemas.assessment import (
     BuildingTypeAssessment,
     ChatChunk,
     ChatRequest,
+    ConflictNote,
     Constraint,
     ParcelData,
     ParcelResponse,
@@ -245,12 +246,32 @@ def _resolved_to_schema(bta) -> BuildingTypeAssessment:
                 confidence=c.confidence.value,
                 citation=c.citation,
                 explanation=c.explanation,
+                design_standards=getattr(c, "design_standards", False),
+                variance_available=getattr(c, "variance_available", False),
+                conflict_notes=getattr(c, "conflict_notes", None),
             )
             for c in bta.constraints
         ],
         max_buildable_area_sf=bta.max_size_sf,
         max_units=bta.max_units,
     )
+
+
+def _collect_conflicts(building_types: list) -> list[ConflictNote]:
+    """Deduplicate conflict notes across all building types."""
+    seen: set[str] = set()
+    conflicts: list[ConflictNote] = []
+    for bt in building_types:
+        for c in bt.constraints:
+            notes = getattr(c, "conflict_notes", None)
+            if notes and c.constraint_type not in seen:
+                seen.add(c.constraint_type)
+                conflicts.append(ConflictNote(
+                    constraint_name=c.constraint_type,
+                    note=notes,
+                    citation=c.citation,
+                ))
+    return conflicts
 
 
 @router.get("/geocode")
@@ -321,6 +342,7 @@ async def _assess_inner(req, db, parcel_svc, resolver):
     lookup = await _resolve_parcel_and_zone(req, db, parcel_svc, resolver)
 
     building_types = [_resolved_to_schema(bt) for bt in lookup.resolved.building_types]
+    conflicts = _collect_conflicts(lookup.resolved.building_types)
 
     # Build summary (simple text fallback since SynthesisService may not exist yet)
     summary_parts = [f"Assessment for {lookup.parcel_data.address} (APN: {lookup.parcel_data.apn})"]
@@ -358,6 +380,7 @@ async def _assess_inner(req, db, parcel_svc, resolver):
         setback_geometry=lookup.resolved.setback_geometry,
         summary=summary,
         assessment_id=assessment_id,
+        conflicts=conflicts,
     )
 
 
