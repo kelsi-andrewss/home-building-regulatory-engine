@@ -133,7 +133,7 @@ export function geocodeAddress(query: string): Promise<GeocodingResult[]> {
   return request<GeocodingResult[]>(`${BASE_URL}/geocode?q=${encodeURIComponent(query)}`);
 }
 
-export function fetchDesignConstraints(input: { address?: string; apn?: string }): Promise<DesignConstraintResponse> {
+export function fetchDesignConstraints(input: { address?: string; apn?: string; building_type?: BuildingType }): Promise<DesignConstraintResponse> {
   return request<DesignConstraintResponse>(`${BASE_URL}/design-constraints`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

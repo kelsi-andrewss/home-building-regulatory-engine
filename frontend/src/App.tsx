@@ -100,7 +100,7 @@ function MainApp() {
       ctxDispatch({ type: 'SET_ASSESSMENT', payload: result });
 
       try {
-        const dc = await fetchDesignConstraints({ address: candidate.address, apn: candidate.apn });
+        const dc = await fetchDesignConstraints({ address: candidate.address, apn: candidate.apn, building_type: state.selectedType });
         if (dc.parcel_apn === resultApn) {
           ctxDispatch({ type: 'SET_DESIGN_CONSTRAINTS', payload: dc });
         }
@@ -124,6 +124,17 @@ function MainApp() {
       }
     }
   }
+
+  useEffect(() => {
+    if (!assessment) return;
+    fetchDesignConstraints({
+      address: assessment.parcel.address,
+      apn: assessment.parcel.apn,
+      building_type: state.selectedType,
+    })
+      .then((dc) => ctxDispatch({ type: 'SET_DESIGN_CONSTRAINTS', payload: dc }))
+      .catch((err) => console.error('Design constraints fetch failed:', err));
+  }, [state.selectedType]);
 
   const availableTypes: BuildingType[] = assessment
     ? (assessment.building_types.map((bt) => bt.type) as BuildingType[])

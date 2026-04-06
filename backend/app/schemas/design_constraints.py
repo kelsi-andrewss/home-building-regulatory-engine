@@ -6,6 +6,7 @@ from pydantic import BaseModel, model_validator
 class DesignConstraintRequest(BaseModel):
     address: str | None = None
     apn: str | None = None
+    building_type: str | None = None
 
     @model_validator(mode="after")
     def require_address_or_apn(self) -> "DesignConstraintRequest":

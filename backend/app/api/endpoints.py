@@ -553,13 +553,21 @@ async def get_design_constraints(
     # Extract constraint values directly from resolved constraints
     from backend.app.engine.rule_engine import _get_constraint_value
 
-    # Use SFH constraints (first building type)
-    sfh_constraints = lookup.resolved.building_types[0].constraints if lookup.resolved.building_types else []
+    # Find matching building type, default to first (SFH)
+    target_constraints = []
+    if lookup.resolved.building_types:
+        target_bt = lookup.resolved.building_types[0]  # default SFH
+        if req.building_type:
+            for bt in lookup.resolved.building_types:
+                if bt.building_type.value == req.building_type:
+                    target_bt = bt
+                    break
+        target_constraints = target_bt.constraints
 
-    front_val = _get_constraint_value(sfh_constraints, "setback_front", 20.0)
-    side_val = _get_constraint_value(sfh_constraints, "setback_side", 5.0)
-    rear_val = _get_constraint_value(sfh_constraints, "setback_rear", 15.0)
-    height_val = _get_constraint_value(sfh_constraints, "height_max", 33.0)
+    front_val = _get_constraint_value(target_constraints, "setback_front", 20.0)
+    side_val = _get_constraint_value(target_constraints, "setback_side", 5.0)
+    rear_val = _get_constraint_value(target_constraints, "setback_rear", 15.0)
+    height_val = _get_constraint_value(target_constraints, "height_max", 33.0)
 
     # Build confidence/citation lookup from resolved constraints
     def _constraint_meta(constraints, name):
@@ -568,10 +576,10 @@ async def get_design_constraints(
                 return c.confidence.value, c.citation
         return "unknown", ""
 
-    front_conf, front_cite = _constraint_meta(sfh_constraints, "setback_front")
-    side_conf, side_cite = _constraint_meta(sfh_constraints, "setback_side")
-    rear_conf, rear_cite = _constraint_meta(sfh_constraints, "setback_rear")
-    height_conf, height_cite = _constraint_meta(sfh_constraints, "height_max")
+    front_conf, front_cite = _constraint_meta(target_constraints, "setback_front")
+    side_conf, side_cite = _constraint_meta(target_constraints, "setback_side")
+    rear_conf, rear_cite = _constraint_meta(target_constraints, "setback_rear")
+    height_conf, height_cite = _constraint_meta(target_constraints, "height_max")
 
     # Edge geometry + envelope
     parcel_geojson = lookup.parcel_data.geometry
@@ -625,7 +633,7 @@ async def get_design_constraints(
 
     # Extract material requirements from resolved constraints
     material_requirements: list[MaterialRequirement] = []
-    for c in sfh_constraints:
+    for c in target_constraints:
         if c.constraint_type.startswith("material_") or c.constraint_type == "fire_rating":
             material_requirements.append(
                 MaterialRequirement(
