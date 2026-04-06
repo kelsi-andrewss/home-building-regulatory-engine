@@ -1,6 +1,10 @@
 import { useAssessment } from '../context/AssessmentContext';
 
-export default function ParameterInputs() {
+interface Props {
+  maxBedrooms?: number | null;
+}
+
+export default function ParameterInputs({ maxBedrooms }: Props) {
   const { projectParams, isDirty, loading, dispatch, reassess } = useAssessment();
 
   function handleChange(field: 'bedrooms' | 'bathrooms' | 'sqft', raw: string) {
@@ -96,6 +100,11 @@ export default function ParameterInputs() {
         </span>
       )}
       </div>
+      {maxBedrooms != null && projectParams.bedrooms != null && projectParams.bedrooms > maxBedrooms && (
+        <div className="badge badge-warning" style={{ marginTop: '8px', fontSize: '12px', padding: '6px 12px' }}>
+          Exceeds estimated maximum of {maxBedrooms} bedrooms for this building type
+        </div>
+      )}
     </div>
   );
 }
