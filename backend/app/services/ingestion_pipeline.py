@@ -113,21 +113,19 @@ class IngestionPipeline:
                 self._store_fragment(fragment, name, url, specific_plan)
                 result.fragments_extracted += 1
 
-            await self.db_session.flush()
-
             # 5. Upsert SpecificPlan record
             await self._update_specific_plan(
                 specific_plan, result.fragments_extracted, url
             )
 
             result.status = IngestionStatus.COMPLETED
-            await self.db_session.commit()
             logger.info(
                 "Completed %s: %d fragments (%d flagged)",
                 name, result.fragments_extracted, result.fragments_flagged,
             )
 
         except Exception as e:
+            await self.db_session.rollback()
             result.status = IngestionStatus.FAILED
             error_msg = f"Pipeline failed for {name}: {e}"
             logger.error(error_msg)
