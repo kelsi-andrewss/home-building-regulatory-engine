@@ -17,6 +17,24 @@ from backend.app.services.errors import ParcelServiceError  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
+def _centroid_from_geojson(geometry: dict) -> tuple[float, float]:
+    """Return (lat, lng) centroid from a GeoJSON Polygon/MultiPolygon."""
+    geo_type = geometry.get("type", "")
+    coords = geometry.get("coordinates", [])
+
+    if geo_type == "MultiPolygon":
+        ring = coords[0][0]
+    elif geo_type == "Polygon":
+        ring = coords[0]
+    else:
+        raise ParcelServiceError(f"Unsupported geometry type: {geo_type}")
+
+    n = len(ring)
+    lng = sum(pt[0] for pt in ring) / n
+    lat = sum(pt[1] for pt in ring) / n
+    return lat, lng
+
+
 @dataclass
 class ParcelZoning:
     zone_complete: str
@@ -96,6 +114,39 @@ class ParcelService:
             address=location.address,
             lat=location.lat,
             lng=location.lng,
+            geometry=parcel.geometry,
+            lot_area_sf=parcel.lot_area_sf,
+            year_built=parcel.year_built,
+            existing_units=parcel.units,
+            existing_sqft=parcel.sqft,
+            zoning=ParcelZoning(
+                zone_complete=zoning.zone_complete,
+                zone_class=zoning.zone_class,
+                zone_code=zoning.zone_code,
+                general_plan_land_use=land_use.gplu,
+                land_use_category=land_use.category,
+                specific_plan=spatial_specific_plan or specific_plan,
+                hpoz=hpoz,
+            ),
+        )
+
+    async def lookup_by_apn(self, apn: str) -> ParcelData:
+        parcel = await self.lacounty.get_parcel_by_apn(apn)
+        lat, lng = _centroid_from_geojson(parcel.geometry)
+
+        zoning, land_use, specific_plan, hpoz, spatial_specific_plan = await asyncio.gather(
+            self.navigatela.get_zoning(lat, lng),
+            self.navigatela.get_land_use(lat, lng),
+            self.navigatela.get_specific_plan(lat, lng),
+            self.navigatela.get_hpoz(lat, lng),
+            self._spatial_specific_plan_lookup(lat, lng),
+        )
+
+        return ParcelData(
+            apn=parcel.apn,
+            address=parcel.situs_address,
+            lat=lat,
+            lng=lng,
             geometry=parcel.geometry,
             lot_area_sf=parcel.lot_area_sf,
             year_built=parcel.year_built,
