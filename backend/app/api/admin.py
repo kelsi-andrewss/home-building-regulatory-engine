@@ -1,3 +1,4 @@
+import hmac
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -23,7 +24,7 @@ async def verify_admin_key(authorization: str | None = Header(None)) -> None:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
     token = authorization.removeprefix("Bearer ")
-    if token != settings.admin_api_key:
+    if not hmac.compare_digest(settings.admin_api_key, token):
         raise HTTPException(status_code=401, detail="Invalid admin API key")
 
 
