@@ -647,3 +647,60 @@ class TestBMORFA:
         far_constraint = next(c for c in sfh.constraints if c.constraint_type == "far_max")
         assert far_constraint.value == 0.45
         assert "BMO" in far_constraint.citation
+
+
+class TestMaxBedrooms:
+
+    @pytest.fixture
+    def resolver(self):
+        return ConstraintResolver()
+
+    def test_sfh_max_bedrooms_r1_small_lot(self, resolver):
+        """R1-1, 5000 sf lot: RFA 0.45 -> max_livable 2250. (2250 - 200) / 70 = 29."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 5000}, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.max_bedrooms == 29
+
+    def test_sfh_max_bedrooms_r1_large_lot(self, resolver):
+        """R1-1, 7500 sf lot: RFA 0.40 -> max_livable 3000. (3000 - 200) / 70 = 40."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 7500}, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.max_bedrooms == 40
+
+    def test_adu_max_bedrooms(self, resolver):
+        """Any zone: ADU max_size 1200. (1200 - 400) / 70 = 11."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 7500}, rule_fragments=[])
+        adu = next(bt for bt in result.building_types if bt.building_type == BuildingType.ADU)
+        assert adu.max_bedrooms == 11
+
+    def test_guest_house_matches_sfh(self, resolver):
+        """Guest House shares SFH's RFA -> same max_bedrooms."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 7500}, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        gh = next(bt for bt in result.building_types if bt.building_type == BuildingType.GUEST_HOUSE)
+        assert gh.max_bedrooms == sfh.max_bedrooms
+
+    def test_duplex_max_bedrooms_r2(self, resolver):
+        """R2-1, 7500 sf: FAR 3.0 -> buildable 22500, livable 22100. (22100 - 200) / 70 = 312."""
+        r2 = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
+        result = resolver.resolve(r2, {"lot_area_sf": 7500}, rule_fragments=[])
+        duplex = next(bt for bt in result.building_types if bt.building_type == BuildingType.DUPLEX)
+        assert duplex.max_bedrooms == 312
+
+    def test_duplex_max_bedrooms_not_allowed(self, resolver):
+        """R1-1: Duplex not allowed -> max_bedrooms is None."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 7500}, rule_fragments=[])
+        duplex = next(bt for bt in result.building_types if bt.building_type == BuildingType.DUPLEX)
+        assert duplex.max_bedrooms is None
+
+    def test_max_bedrooms_none_when_no_area(self, resolver):
+        """lot_area=0 -> SFH max_bedrooms is None."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        result = resolver.resolve(r1, {"lot_area_sf": 0}, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.max_bedrooms is None

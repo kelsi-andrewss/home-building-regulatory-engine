@@ -42,6 +42,7 @@ class BuildingTypeAssessment(BaseModel):
     constraints: list[Constraint]
     max_buildable_area_sf: float | None = None
     max_units: int | None = None
+    max_bedrooms: int | None = None
 
 
 class ZoningData(BaseModel):
