@@ -48,6 +48,10 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
     });
   }
 
+  const typeConflicts = buildingType.constraints
+    .filter((c) => c.conflict_notes)
+    .map((c) => ({ constraint_name: c.name, note: c.conflict_notes!, citation: c.citation }));
+
   return (
     <div>
       <ParameterInputs maxBedrooms={buildingType.max_bedrooms} />
@@ -58,7 +62,7 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
         </span>
       </div>
 
-      {assessment.conflicts.length > 0 && (
+      {typeConflicts.length > 0 && (
         <div style={{
           marginBottom: '16px',
           padding: '14px 16px',
@@ -70,7 +74,7 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
           <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '10px', fontSize: '14px' }}>
             Constraint Conflicts
           </div>
-          {assessment.conflicts.map((conflict) => (
+          {typeConflicts.map((conflict) => (
             <div key={conflict.constraint_name} style={{ marginBottom: '8px', fontSize: '13px', lineHeight: '1.5' }}>
               <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{conflict.constraint_name}</span>
               <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>{conflict.note}</span>
