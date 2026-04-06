@@ -219,6 +219,42 @@ _DUPLEX_ZONES = {"R2", "RD1.5", "RD2", "RD3", "RD4", "RD5", "RD6", "R3", "R4"}
 # ADU parking waived under state law (SB 13).
 _SFH_PARKING_FOOTPRINT_SF = 400
 
+# ---- BMO Residential Floor Area (RFA) lookup ----
+# LAMC 12.21 C.10. Lot-size-tiered ratios per zone class.
+# Each entry: list of {max_lot_area, rfa} tiers evaluated in order.
+# First tier where lot_area < max_lot_area wins. Last tier is the fallback.
+BMO_RFA_RULES: dict[str, list[dict[str, float]]] = {
+    "R1":   [{"max_lot_area": 7500, "rfa": 0.45}, {"max_lot_area": float("inf"), "rfa": 0.40}],
+    "RS":   [{"max_lot_area": 7500, "rfa": 0.45}, {"max_lot_area": float("inf"), "rfa": 0.40}],
+    "RE9":  [{"max_lot_area": 15000, "rfa": 0.40}, {"max_lot_area": float("inf"), "rfa": 0.35}],
+    "RE11": [{"max_lot_area": 15000, "rfa": 0.40}, {"max_lot_area": float("inf"), "rfa": 0.35}],
+    "RE15": [{"max_lot_area": 20000, "rfa": 0.35}, {"max_lot_area": float("inf"), "rfa": 0.30}],
+    "RE20": [{"max_lot_area": 20000, "rfa": 0.35}, {"max_lot_area": float("inf"), "rfa": 0.30}],
+    "RE40": [{"max_lot_area": 20000, "rfa": 0.35}, {"max_lot_area": float("inf"), "rfa": 0.30}],
+    "RA":   [{"max_lot_area": 20000, "rfa": 0.25}, {"max_lot_area": float("inf"), "rfa": 0.20}],
+    # R2-R4 and RD zones: flat 0.45 for SFH (2025 Unified FAR reform)
+    "R2":     [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD1.5":  [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD2":    [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD3":    [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD4":    [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD5":    [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "RD6":    [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "R3":     [{"max_lot_area": float("inf"), "rfa": 0.45}],
+    "R4":     [{"max_lot_area": float("inf"), "rfa": 0.45}],
+}
+
+
+def _get_bmo_rfa_ratio(zone_class: str, lot_area: float) -> float | None:
+    tiers = BMO_RFA_RULES.get(zone_class)
+    if tiers is None:
+        return None
+    for tier in tiers:
+        if lot_area < tier["max_lot_area"]:
+            return tier["rfa"]
+    return tiers[-1]["rfa"]
+
+
 # Constraint types where "more restrictive" means LOWER value
 _MAX_CONSTRAINTS = {"height_max", "far_max", "lot_coverage_max", "size_max_detached"}
 
@@ -472,16 +508,12 @@ class ConstraintResolver:
                 conflict_map=conflict_map,
             )
 
-        # 4. Compute FAR-based max buildable area for sqft validation
+        # 4. Extract lot/project params for per-building-type sqft validation
         lot_area = parcel_data.get("lot_area_sf", 0)
         params = project_params or {}
         proposed_sqft = params.get("sqft")
-        far_max = _get_constraint_value(base_constraints, "far_max", 0.0)
-        max_buildable_sf: float | None = None
-        if far_max > 0 and lot_area > 0:
-            max_buildable_sf = lot_area * far_max
 
-        # 4a. Compute min sqft from bedrooms + bathrooms
+        # 4a. Compute min sqft from bedrooms + bathrooms (building-type-agnostic)
         bedrooms = params.get("bedrooms")
         bathrooms = params.get("bathrooms")
         min_sqft: float | None = None
@@ -495,52 +527,76 @@ class ConstraintResolver:
                     f"(minimum ~{min_sqft:,.0f} sf)"
                 )
 
-        # 4b. Effective sqft for FAR comparison: use proposed_sqft if set,
-        # otherwise fall back to min_sqft from bedrooms/bathrooms.
+        # 4b. Effective sqft for FAR/RFA comparison
         effective_sqft = proposed_sqft if proposed_sqft is not None else min_sqft
-
-        # 4c. Parking footprint deduction: SFH/Guest House/Duplex need covered
-        # parking (~400sf). ADU parking is waived (SB 13).
-        max_livable_sf: float | None = None
-        if max_buildable_sf is not None:
-            max_livable_sf = max_buildable_sf - _SFH_PARKING_FOOTPRINT_SF
-
-        sqft_exceeds = (
-            effective_sqft is not None
-            and max_livable_sf is not None
-            and effective_sqft > max_livable_sf
-        )
-        sqft_note: str | None = None
-        if sqft_exceeds:
-            sqft_note = (
-                f"Proposed {effective_sqft:,.0f} sf exceeds max buildable area "
-                f"of {max_buildable_sf:,.0f} sf "
-                f"(FAR {far_max} \u00d7 {lot_area:,.0f} sf lot, "
-                f"minus {_SFH_PARKING_FOOTPRINT_SF} sf parking)"
-            )
 
         # 5. Build per-building-type assessments
         summary_constraints = list(base_constraints)
         building_types: list[BuildingTypeAssessment] = []
 
-        # SFH -- always allowed in residential zones (unless sqft exceeds FAR limit)
+        # --- SFH: use BMO RFA (no parking deduction; garage excluded from RFA) ---
+        rfa = _get_bmo_rfa_ratio(parsed_zone.zone_class, lot_area)
+        if rfa is not None and lot_area > 0:
+            sfh_max_buildable = lot_area * rfa
+            sfh_max_livable = sfh_max_buildable  # no parking deduction under RFA
+            sfh_constraints = list(base_constraints)
+            # Replace or add far_max with RFA value
+            sfh_constraints = [c for c in sfh_constraints if c.constraint_type != "far_max"]
+            sfh_constraints.append(ResolvedConstraint(
+                constraint_type="far_max",
+                value=rfa,
+                unit="ratio",
+                confidence=Confidence.VERIFIED,
+                citation="LAMC SS12.21 C.10 (BMO RFA)",
+                explanation=f"BMO Residential Floor Area ratio for {parsed_zone.zone_class}, lot {lot_area:,.0f} sf",
+                source="bmo_rfa",
+            ))
+        else:
+            # Fallback: HD FAR with parking deduction (zone has no RFA entry)
+            hd_far = _get_constraint_value(base_constraints, "far_max", 0.0)
+            sfh_max_buildable = lot_area * hd_far if hd_far > 0 and lot_area > 0 else None
+            sfh_max_livable = (sfh_max_buildable - _SFH_PARKING_FOOTPRINT_SF) if sfh_max_buildable is not None else None
+            sfh_constraints = list(base_constraints)
+
+        sfh_sqft_exceeds = (
+            effective_sqft is not None
+            and sfh_max_livable is not None
+            and effective_sqft > sfh_max_livable
+        )
+        sfh_sqft_note: str | None = None
+        if sfh_sqft_exceeds:
+            if rfa is not None:
+                sfh_sqft_note = (
+                    f"Proposed {effective_sqft:,.0f} sf exceeds max buildable area "
+                    f"of {sfh_max_buildable:,.0f} sf "
+                    f"(RFA {rfa} \u00d7 {lot_area:,.0f} sf lot)"
+                )
+            else:
+                sfh_sqft_note = (
+                    f"Proposed {effective_sqft:,.0f} sf exceeds max buildable area "
+                    f"of {sfh_max_buildable:,.0f} sf "
+                    f"(FAR {_get_constraint_value(base_constraints, 'far_max', 0.0)} "
+                    f"\u00d7 {lot_area:,.0f} sf lot, "
+                    f"minus {_SFH_PARKING_FOOTPRINT_SF} sf parking)"
+                )
+
         sfh_notes_parts: list[str] = []
-        if sqft_note:
-            sfh_notes_parts.append(sqft_note)
+        if sfh_sqft_note:
+            sfh_notes_parts.append(sfh_sqft_note)
         if undersized_note:
             sfh_notes_parts.append(undersized_note)
         sfh_notes = "; ".join(sfh_notes_parts) if sfh_notes_parts else None
 
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.SFH,
-            allowed=not sqft_exceeds,
-            constraints=list(base_constraints),
+            allowed=not sfh_sqft_exceeds,
+            constraints=sfh_constraints,
             max_units=1,
-            max_size_sf=max_buildable_sf,
+            max_size_sf=sfh_max_buildable,
             notes=sfh_notes,
         ))
 
-        # ADU -- always allowed by state law (no parking deduction)
+        # --- ADU: state law preemption, unchanged ---
         from backend.app.engine.adu_preemption import apply_adu_preemption
         adu_result = apply_adu_preemption(list(base_constraints))
         adu_max_size = 1200.0
@@ -557,23 +613,23 @@ class ConstraintResolver:
             notes="; ".join(adu_result.preemptions_applied) if adu_result.preemptions_applied else None,
         ))
 
-        # Guest House -- same as SFH, accessory structure
+        # --- Guest House: same RFA as SFH (accessory structure on same lot) ---
         guest_house_notes_parts = ["Accessory structure; same setback/height rules as primary dwelling"]
-        if sqft_note:
-            guest_house_notes_parts.append(sqft_note)
+        if sfh_sqft_note:
+            guest_house_notes_parts.append(sfh_sqft_note)
         if undersized_note:
             guest_house_notes_parts.append(undersized_note)
         guest_house_notes = "; ".join(guest_house_notes_parts)
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.GUEST_HOUSE,
-            allowed=not sqft_exceeds,
-            constraints=list(base_constraints),
+            allowed=not sfh_sqft_exceeds,
+            constraints=sfh_constraints,
             max_units=1,
-            max_size_sf=max_buildable_sf,
+            max_size_sf=sfh_max_buildable,
             notes=guest_house_notes,
         ))
 
-        # Duplex -- only in R2+ and RD zones
+        # --- Duplex: HD FAR with parking deduction ---
         duplex_allowed = _allows_duplex(parsed_zone.zone_class)
         density_rule = base_rules.get("density", {})
         density_value = density_rule.get("value", 0)
@@ -583,18 +639,36 @@ class ConstraintResolver:
         if duplex_allowed and density_unit == "sf" and density_value > 0 and lot_area > 0:
             max_units_duplex = int(lot_area / density_value)
 
+        duplex_far = _get_constraint_value(base_constraints, "far_max", 0.0)
+        duplex_max_buildable: float | None = None
+        duplex_max_livable: float | None = None
+        if duplex_allowed and duplex_far > 0 and lot_area > 0:
+            duplex_max_buildable = lot_area * duplex_far
+            duplex_max_livable = duplex_max_buildable - _SFH_PARKING_FOOTPRINT_SF
+
+        duplex_sqft_exceeds = (
+            effective_sqft is not None
+            and duplex_max_livable is not None
+            and effective_sqft > duplex_max_livable
+        )
+
         duplex_note: str | None = None
         if not duplex_allowed:
             duplex_note = "Not allowed in single-family zones"
-        elif sqft_note:
-            duplex_note = sqft_note
+        elif duplex_sqft_exceeds:
+            duplex_note = (
+                f"Proposed {effective_sqft:,.0f} sf exceeds max buildable area "
+                f"of {duplex_max_buildable:,.0f} sf "
+                f"(FAR {duplex_far} \u00d7 {lot_area:,.0f} sf lot, "
+                f"minus {_SFH_PARKING_FOOTPRINT_SF} sf parking)"
+            )
 
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.DUPLEX,
-            allowed=duplex_allowed and not sqft_exceeds,
+            allowed=duplex_allowed and not duplex_sqft_exceeds,
             constraints=list(base_constraints) if duplex_allowed else [],
             max_units=max_units_duplex,
-            max_size_sf=max_buildable_sf if duplex_allowed else None,
+            max_size_sf=duplex_max_buildable if duplex_allowed else None,
             notes=duplex_note,
         ))
 
