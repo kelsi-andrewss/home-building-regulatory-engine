@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -238,7 +238,7 @@ class TestEffectiveRuleFiltering:
         assert result[0]["constraint_type"] == "setback_front"
 
     def test_future_effective_date_excluded(self):
-        future = datetime.utcnow() + timedelta(days=30)
+        future = datetime.now(timezone.utc) + timedelta(days=30)
         fragments = [
             {"constraint_type": "height_max", "value": 28, "effective_date": future},
             {"constraint_type": "setback_front", "value": 20},
@@ -248,7 +248,7 @@ class TestEffectiveRuleFiltering:
         assert result[0]["constraint_type"] == "setback_front"
 
     def test_past_effective_date_included(self):
-        past = datetime.utcnow() - timedelta(days=30)
+        past = datetime.now(timezone.utc) - timedelta(days=30)
         fragments = [
             {"constraint_type": "height_max", "value": 28, "effective_date": past},
         ]
@@ -263,7 +263,7 @@ class TestEffectiveRuleFiltering:
         assert len(result) == 1
 
     def test_superseded_with_past_effective_date_still_excluded(self):
-        past = datetime.utcnow() - timedelta(days=30)
+        past = datetime.now(timezone.utc) - timedelta(days=30)
         fragments = [
             {"constraint_type": "height_max", "value": 33, "effective_date": past, "superseded_by": "some-uuid"},
         ]
@@ -432,7 +432,7 @@ class TestVarianceAndConflictNotes:
         assert height.value == 33  # base zone value, superseded fragment excluded
 
     def test_future_fragment_excluded_in_resolve(self, resolver, r1_zone, parcel_data):
-        future = datetime.utcnow() + timedelta(days=365)
+        future = datetime.now(timezone.utc) + timedelta(days=365)
         fragments = [{
             "constraint_type": "height_max",
             "value": 28,
@@ -704,3 +704,104 @@ class TestMaxBedrooms:
         result = resolver.resolve(r1, {"lot_area_sf": 0}, rule_fragments=[])
         sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
         assert sfh.max_bedrooms is None
+
+
+class TestPerConstraintOverride:
+    @pytest.fixture
+    def resolver(self):
+        return ConstraintResolver()
+
+    @pytest.fixture
+    def r1_zone(self):
+        return ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+
+    @pytest.fixture
+    def parcel_data(self):
+        return {"lot_area_sf": 7500}
+
+    def test_override_only_affects_marked_type(self, resolver, r1_zone, parcel_data):
+        """height_max overrides (45 > base 33), but setback_front uses most-restrictive-wins (base 20 > 15)."""
+        fragments = [
+            {
+                "constraint_type": "height_max",
+                "value": 45,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "Mixed SP",
+                "source_document": "Mixed Specific Plan",
+                "overrides_base_zone": True,
+                "extraction_reasoning": "AI extracted",
+            },
+            {
+                "constraint_type": "setback_front",
+                "value": 15,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "Mixed SP",
+                "source_document": "Mixed Specific Plan",
+                "overrides_base_zone": False,
+                "extraction_reasoning": "AI extracted",
+            },
+        ]
+        result = resolver.resolve(r1_zone, parcel_data, fragments, specific_plan="Mixed SP")
+        cmap = {c.constraint_type: c for c in result.summary_constraints}
+        assert cmap["height_max"].value == 45  # override wins
+        assert cmap["setback_front"].value == 20  # most-restrictive-wins preserves base
+
+    def test_override_multiple_types(self, resolver, r1_zone, parcel_data):
+        """Two different constraint types both with overrides_base_zone=True override independently."""
+        fragments = [
+            {
+                "constraint_type": "height_max",
+                "value": 45,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "Multi SP",
+                "source_document": "Multi Specific Plan",
+                "overrides_base_zone": True,
+                "extraction_reasoning": "AI extracted",
+            },
+            {
+                "constraint_type": "setback_front",
+                "value": 15,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "Multi SP",
+                "source_document": "Multi Specific Plan",
+                "overrides_base_zone": True,
+                "extraction_reasoning": "AI extracted",
+            },
+        ]
+        result = resolver.resolve(r1_zone, parcel_data, fragments, specific_plan="Multi SP")
+        cmap = {c.constraint_type: c for c in result.summary_constraints}
+        assert cmap["height_max"].value == 45  # override wins
+        assert cmap["setback_front"].value == 15  # override wins
+
+    def test_no_overrides_preserves_behavior(self, resolver, r1_zone, parcel_data):
+        """All fragments overrides_base_zone=False -> most-restrictive-wins for all."""
+        fragments = [
+            {
+                "constraint_type": "height_max",
+                "value": 45,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "No Override SP",
+                "source_document": "No Override Plan",
+                "overrides_base_zone": False,
+                "extraction_reasoning": "AI extracted",
+            },
+            {
+                "constraint_type": "setback_front",
+                "value": 15,
+                "unit": "ft",
+                "zone_applicability": ["R1"],
+                "specific_plan": "No Override SP",
+                "source_document": "No Override Plan",
+                "overrides_base_zone": False,
+                "extraction_reasoning": "AI extracted",
+            },
+        ]
+        result = resolver.resolve(r1_zone, parcel_data, fragments, specific_plan="No Override SP")
+        cmap = {c.constraint_type: c for c in result.summary_constraints}
+        assert cmap["height_max"].value == 33  # base wins (more restrictive)
+        assert cmap["setback_front"].value == 20  # base wins (more restrictive)
