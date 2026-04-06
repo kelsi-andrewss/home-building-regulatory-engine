@@ -9,6 +9,7 @@ from backend.app.engine.rule_engine import (
     Confidence,
     ConstraintResolver,
     ResolvedConstraint,
+    _SFH_PARKING_FOOTPRINT_SF,
     _detect_overlay_conflicts,
     _filter_effective_rules,
     tag_confidence,
@@ -509,3 +510,82 @@ class TestADUVarianceDisabled:
         result = apply_adu_preemption(local)
         size_max = next(c for c in result.constraints if c.constraint_type == "size_max_detached")
         assert size_max.variance_available is False
+
+
+class TestBedroomBathroomValidation:
+    """Tests for bedroom/bathroom min sqft validation and parking footprint deduction."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConstraintResolver()
+
+    @pytest.fixture
+    def r1_zone(self):
+        return ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+
+    @pytest.fixture
+    def r2_zone(self):
+        return ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
+
+    def test_min_sqft_warning_when_undersized(self, resolver, r1_zone):
+        """4 bed / 3 bath with 800 sqft -> SFH notes contain 'undersized'."""
+        # min_sqft = 4*120 + 3*40 + 200 = 480+120+200 = 800, so 800 is not < 800.
+        # Use 799 to be truly undersized.
+        parcel = {"lot_area_sf": 7500}
+        params = {"bedrooms": 4, "bathrooms": 3, "sqft": 799}
+        result = resolver.resolve(r1_zone, parcel, rule_fragments=[], project_params=params)
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.notes is not None
+        assert "undersized" in sfh.notes
+
+    def test_no_warning_when_adequate_sqft(self, resolver, r1_zone):
+        """3 bed / 2 bath with 2000 sqft -> SFH notes do NOT contain 'undersized'."""
+        parcel = {"lot_area_sf": 7500}
+        params = {"bedrooms": 3, "bathrooms": 2, "sqft": 2000}
+        result = resolver.resolve(r1_zone, parcel, rule_fragments=[], project_params=params)
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        if sfh.notes:
+            assert "undersized" not in sfh.notes
+
+    def test_bedrooms_trigger_far_check_without_sqft(self, resolver):
+        """5 bed / 4 bath (min_sqft=960) on small lot with FAR -> SFH not allowed if 960 > max_livable_sf."""
+        # Need a zone with far_max. R2 has far_max=3.0 from HD1.
+        # Use a small lot: lot_area=400sf -> max_buildable=400*3.0=1200, max_livable=1200-400=800
+        # min_sqft = 5*120 + 4*40 + 200 = 600+160+200 = 960 > 800 -> exceeds
+        r2_zone = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
+        parcel = {"lot_area_sf": 400}
+        params = {"bedrooms": 5, "bathrooms": 4}  # no sqft
+        result = resolver.resolve(r2_zone, parcel, rule_fragments=[], project_params=params)
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.allowed is False
+
+    def test_parking_deduction_affects_sfh(self, resolver):
+        """Lot where max_buildable=1500, proposed sqft=1200 -> exceeds max_livable (1500-400=1100)."""
+        # R2-1: far_max=3.0 from HD1. lot_area=500 -> max_buildable=1500, max_livable=1100
+        # proposed_sqft=1200 > 1100 -> SFH not allowed
+        r2_zone = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
+        parcel = {"lot_area_sf": 500}
+        params = {"sqft": 1200}
+        result = resolver.resolve(r2_zone, parcel, rule_fragments=[], project_params=params)
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.allowed is False
+        assert sfh.notes is not None
+        assert "parking" in sfh.notes.lower()
+        # max_size_sf should still report the total envelope (not livable)
+        assert sfh.max_size_sf == 1500
+
+    def test_no_parking_deduction_for_adu(self, resolver):
+        """Same lot, ADU is still allowed (parking waived under SB 13)."""
+        r2_zone = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
+        parcel = {"lot_area_sf": 500}
+        params = {"sqft": 1200}
+        result = resolver.resolve(r2_zone, parcel, rule_fragments=[], project_params=params)
+        adu = next(bt for bt in result.building_types if bt.building_type == BuildingType.ADU)
+        assert adu.allowed is True
+
+    def test_no_validation_without_params(self, resolver, r1_zone):
+        """No bedrooms/bathrooms/sqft -> no notes on SFH."""
+        parcel = {"lot_area_sf": 7500}
+        result = resolver.resolve(r1_zone, parcel, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.notes is None
