@@ -500,6 +500,11 @@ class ConstraintResolver:
         for frag in matching_fragments:
             if frag.get("value") is None:
                 continue
+            # ADU state-law fragments handled by apply_adu_preemption(); skip
+            # in the general overlay merge to avoid leaking conflict_notes to
+            # non-ADU building types.
+            if "65852" in (frag.get("source_document") or ""):
+                continue
             confidence = tag_confidence(
                 "specific_plan" if frag.get("specific_plan") else "base_zone",
                 frag.get("extraction_reasoning"),
