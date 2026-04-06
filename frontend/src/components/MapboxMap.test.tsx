@@ -87,26 +87,8 @@ describe('MapboxMap', () => {
     expect(mockRemove).toHaveBeenCalledOnce();
   });
 
-  it('shows existing structure overlay when assessment has existing_units', () => {
+  it('does not render existing structure info (moved to sidebar)', () => {
     const assessment = makeAssessment();
-
-    render(<MapboxMap assessment={assessment} hoveredConstraint={null} />);
-
-    expect(screen.getByText('Existing Structure')).toBeInTheDocument();
-    expect(screen.getByText(/Units:/)).toBeInTheDocument();
-    expect(screen.getByText(/Sq Ft:/)).toBeInTheDocument();
-  });
-
-  it('does not show existing structure overlay when assessment is null', () => {
-    render(<MapboxMap assessment={null} hoveredConstraint={null} />);
-
-    expect(screen.queryByText('Existing Structure')).not.toBeInTheDocument();
-  });
-
-  it('does not show existing structure overlay when both existing fields are null', () => {
-    const assessment = makeAssessment();
-    assessment.parcel.existing_units = null;
-    assessment.parcel.existing_sqft = null;
 
     render(<MapboxMap assessment={assessment} hoveredConstraint={null} />);
 

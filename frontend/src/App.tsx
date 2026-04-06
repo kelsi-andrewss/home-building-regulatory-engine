@@ -177,6 +177,24 @@ function MainApp() {
 
           {assessment && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+              {(assessment.parcel.existing_units != null || assessment.parcel.existing_sqft != null) && (
+                <div style={{
+                  padding: '16px 20px',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--border-color)',
+                }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>Existing Structure</div>
+                  <div style={{ display: 'flex', gap: '24px', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    {assessment.parcel.existing_units != null && (
+                      <span>Units: {assessment.parcel.existing_units.toLocaleString()}</span>
+                    )}
+                    {assessment.parcel.existing_sqft != null && (
+                      <span>Sq Ft: {assessment.parcel.existing_sqft.toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+              )}
               <BuildingTypeSelector
                 selectedType={state.selectedType}
                 availableTypes={availableTypes}

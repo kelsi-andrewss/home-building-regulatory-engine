@@ -9,16 +9,18 @@ export default function ParameterInputs() {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '20px',
-        paddingBottom: '24px',
-        borderBottom: '1px solid var(--border-color)',
-        flexWrap: 'wrap',
-      }}
-    >
+    <div>
+      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '12px' }}>Proposed Build</div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          paddingBottom: '24px',
+          borderBottom: '1px solid var(--border-color)',
+          flexWrap: 'wrap',
+        }}
+      >
       <div className="param-input-group">
         <label htmlFor="param-bedrooms" className="param-label">Bedrooms</label>
         <input
@@ -93,6 +95,7 @@ export default function ParameterInputs() {
           Pending Re-analysis
         </span>
       )}
+      </div>
     </div>
   );
 }
