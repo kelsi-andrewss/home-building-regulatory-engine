@@ -55,9 +55,31 @@ class LACountyClient:
                 f"No parcel found at point ({lat}, {lng})"
             )
 
-        feature = features[0]
-        props = feature["properties"]
+        return self._parse_parcel_feature(features[0])
 
+    async def get_parcel_by_apn(self, apn: str) -> ParcelRecord:
+        resp = await self.session.get(
+            f"{self.BASE_URL}/query",
+            params={
+                "where": f"APN = '{apn}'",
+                "outFields": "APN,AIN,SitusAddress,UseType,YearBuilt1,Units1,Bedrooms1,Bathrooms1,SQFTmain1,Roll_LandValue,Shape.STArea()",
+                "returnGeometry": "true",
+                "f": "geojson",
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        features = data.get("features", [])
+        if not features:
+            raise ParcelNotFoundError(f"No parcel found for APN {apn}")
+
+        return self._parse_parcel_feature(features[0])
+
+    @staticmethod
+    def _parse_parcel_feature(feature: dict) -> ParcelRecord:
+        props = feature["properties"]
         return ParcelRecord(
             apn=props["APN"],
             ain=props["AIN"],
