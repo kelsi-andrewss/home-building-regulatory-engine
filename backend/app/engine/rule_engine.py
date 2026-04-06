@@ -215,6 +215,10 @@ _SF_ZONES = {"RE9", "RE11", "RE15", "RE20", "RE40", "RS", "R1"}
 # Zones that allow multi-family / duplex density
 _DUPLEX_ZONES = {"R2", "RD1.5", "RD2", "RD3", "RD4", "RD5", "RD6", "R3", "R4"}
 
+# SFH requires 2 covered parking spaces (LAMC SS12.21-A,4), ~400sf footprint.
+# ADU parking waived under state law (SB 13).
+_SFH_PARKING_FOOTPRINT_SF = 400
+
 # Constraint types where "more restrictive" means LOWER value
 _MAX_CONSTRAINTS = {"height_max", "far_max", "lot_coverage_max", "size_max_detached"}
 
@@ -470,23 +474,49 @@ class ConstraintResolver:
 
         # 4. Compute FAR-based max buildable area for sqft validation
         lot_area = parcel_data.get("lot_area_sf", 0)
-        proposed_sqft = (project_params or {}).get("sqft")
+        params = project_params or {}
+        proposed_sqft = params.get("sqft")
         far_max = _get_constraint_value(base_constraints, "far_max", 0.0)
         max_buildable_sf: float | None = None
         if far_max > 0 and lot_area > 0:
             max_buildable_sf = lot_area * far_max
 
+        # 4a. Compute min sqft from bedrooms + bathrooms
+        bedrooms = params.get("bedrooms")
+        bathrooms = params.get("bathrooms")
+        min_sqft: float | None = None
+        undersized_note: str | None = None
+        if bedrooms is not None or bathrooms is not None:
+            min_sqft = (bedrooms or 0) * 120 + (bathrooms or 0) * 40 + 200
+            if proposed_sqft is not None and proposed_sqft < min_sqft:
+                undersized_note = (
+                    f"Proposed {proposed_sqft:,.0f} sf may be undersized for "
+                    f"{bedrooms or 0} bed / {bathrooms or 0} bath "
+                    f"(minimum ~{min_sqft:,.0f} sf)"
+                )
+
+        # 4b. Effective sqft for FAR comparison: use proposed_sqft if set,
+        # otherwise fall back to min_sqft from bedrooms/bathrooms.
+        effective_sqft = proposed_sqft if proposed_sqft is not None else min_sqft
+
+        # 4c. Parking footprint deduction: SFH/Guest House/Duplex need covered
+        # parking (~400sf). ADU parking is waived (SB 13).
+        max_livable_sf: float | None = None
+        if max_buildable_sf is not None:
+            max_livable_sf = max_buildable_sf - _SFH_PARKING_FOOTPRINT_SF
+
         sqft_exceeds = (
-            proposed_sqft is not None
-            and max_buildable_sf is not None
-            and proposed_sqft > max_buildable_sf
+            effective_sqft is not None
+            and max_livable_sf is not None
+            and effective_sqft > max_livable_sf
         )
         sqft_note: str | None = None
         if sqft_exceeds:
             sqft_note = (
-                f"Proposed {proposed_sqft:,.0f} sf exceeds max buildable area "
+                f"Proposed {effective_sqft:,.0f} sf exceeds max buildable area "
                 f"of {max_buildable_sf:,.0f} sf "
-                f"(FAR {far_max} \u00d7 {lot_area:,.0f} sf lot)"
+                f"(FAR {far_max} \u00d7 {lot_area:,.0f} sf lot, "
+                f"minus {_SFH_PARKING_FOOTPRINT_SF} sf parking)"
             )
 
         # 5. Build per-building-type assessments
@@ -494,16 +524,23 @@ class ConstraintResolver:
         building_types: list[BuildingTypeAssessment] = []
 
         # SFH -- always allowed in residential zones (unless sqft exceeds FAR limit)
+        sfh_notes_parts: list[str] = []
+        if sqft_note:
+            sfh_notes_parts.append(sqft_note)
+        if undersized_note:
+            sfh_notes_parts.append(undersized_note)
+        sfh_notes = "; ".join(sfh_notes_parts) if sfh_notes_parts else None
+
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.SFH,
             allowed=not sqft_exceeds,
             constraints=list(base_constraints),
             max_units=1,
             max_size_sf=max_buildable_sf,
-            notes=sqft_note,
+            notes=sfh_notes,
         ))
 
-        # ADU -- always allowed by state law
+        # ADU -- always allowed by state law (no parking deduction)
         from backend.app.engine.adu_preemption import apply_adu_preemption
         adu_result = apply_adu_preemption(list(base_constraints))
         adu_max_size = 1200.0
@@ -521,9 +558,12 @@ class ConstraintResolver:
         ))
 
         # Guest House -- same as SFH, accessory structure
-        guest_house_notes = "Accessory structure; same setback/height rules as primary dwelling"
+        guest_house_notes_parts = ["Accessory structure; same setback/height rules as primary dwelling"]
         if sqft_note:
-            guest_house_notes = f"{guest_house_notes}; {sqft_note}"
+            guest_house_notes_parts.append(sqft_note)
+        if undersized_note:
+            guest_house_notes_parts.append(undersized_note)
+        guest_house_notes = "; ".join(guest_house_notes_parts)
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.GUEST_HOUSE,
             allowed=not sqft_exceeds,
