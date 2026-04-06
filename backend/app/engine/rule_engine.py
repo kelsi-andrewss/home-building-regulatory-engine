@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from backend.app.engine.zone_parser import ParsedZone
@@ -301,7 +301,7 @@ def _filter_effective_rules(
 ) -> list[dict]:
     """Drop fragments where superseded_by is set or effective_date is in the future."""
     if as_of is None:
-        as_of = datetime.utcnow()
+        as_of = datetime.now(timezone.utc)
     result = []
     for f in fragments:
         if f.get("superseded_by") is not None:
@@ -345,10 +345,16 @@ def _detect_overlay_conflicts(
 def _merge_constraints(
     base: list[ResolvedConstraint],
     overlay: list[ResolvedConstraint],
-    overlay_overrides: bool = False,
+    override_types: set[str] | None = None,
     conflict_map: dict[str, str] | None = None,
 ) -> list[ResolvedConstraint]:
-    """Merge two constraint lists. Most restrictive wins unless overlay_overrides=True."""
+    """Merge two constraint lists.
+
+    Most restrictive wins UNLESS the constraint_type is in override_types,
+    in which case the overlay value wins unconditionally.
+    """
+    if override_types is None:
+        override_types = set()
     if conflict_map is None:
         conflict_map = {}
     merged: dict[str, ResolvedConstraint] = {}
@@ -357,7 +363,7 @@ def _merge_constraints(
 
     for c in overlay:
         ct = c.constraint_type
-        if ct not in merged or overlay_overrides:
+        if ct not in merged or ct in override_types:
             merged[ct] = c
             if ct in conflict_map:
                 merged[ct].conflict_notes = conflict_map[ct]
@@ -496,7 +502,7 @@ class ConstraintResolver:
 
         # Convert fragments to ResolvedConstraints and merge
         fragment_constraints: list[ResolvedConstraint] = []
-        fragment_overrides = False
+        override_types: set[str] = set()
         for frag in matching_fragments:
             if frag.get("value") is None:
                 continue
@@ -520,13 +526,13 @@ class ConstraintResolver:
                 variance_available=frag.get("variance_available", True),
             ))
             if frag.get("overrides_base_zone"):
-                fragment_overrides = True
+                override_types.add(frag["constraint_type"])
 
         if fragment_constraints:
             conflict_map = _detect_overlay_conflicts(base_constraints, fragment_constraints)
             base_constraints = _merge_constraints(
                 base_constraints, fragment_constraints,
-                overlay_overrides=fragment_overrides,
+                override_types=override_types,
                 conflict_map=conflict_map,
             )
 
