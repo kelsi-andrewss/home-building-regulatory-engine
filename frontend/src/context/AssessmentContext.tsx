@@ -24,7 +24,8 @@ type Action =
   | { type: 'SET_PARAMS'; payload: Partial<ProjectParams> }
   | { type: 'SET_DIRTY'; payload: boolean }
   | { type: 'SET_FEEDBACK'; payload: { name: string; vote: 'up' | 'down' | null } }
-  | { type: 'SET_LOADING'; payload: boolean };
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'CLEAR_ASSESSMENT' };
 
 const initialState: AssessmentState = {
   assessment: null,
@@ -60,6 +61,8 @@ function reducer(state: AssessmentState, action: Action): AssessmentState {
     }
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
+    case 'CLEAR_ASSESSMENT':
+      return { ...state, assessment: null, designConstraints: null, loading: false, isDirty: false };
     default:
       return state;
   }

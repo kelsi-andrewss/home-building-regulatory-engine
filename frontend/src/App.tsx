@@ -108,6 +108,7 @@ function MainApp() {
         console.error('Design constraints fetch failed:', dcErr);
       }
     } catch (err) {
+      ctxDispatch({ type: 'CLEAR_ASSESSMENT' });
       const raw = err instanceof Error ? err.message : String(err);
       let detail = raw;
       try {
