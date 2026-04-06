@@ -717,10 +717,19 @@ class ConstraintResolver:
         setback_rear = _get_constraint_value(base_constraints, "setback_rear", 15)
 
         if parcel_geojson:
-            from backend.app.engine.geometry_utils import buffer_inward, parcel_polygon_from_geojson
+            from shapely.geometry import mapping
+
+            from backend.app.engine.geometry_utils import (
+                buffer_inward_per_edge,
+                classify_parcel_edges,
+                parcel_polygon_from_geojson,
+            )
             try:
                 parcel_poly = parcel_polygon_from_geojson(parcel_geojson)
-                setback_geometry = buffer_inward(parcel_poly, setback_front, setback_side, setback_rear)
+                edges = classify_parcel_edges(parcel_poly)
+                buffer_setbacks = {"front": setback_front, "side": setback_side, "rear": setback_rear}
+                envelope = buffer_inward_per_edge(parcel_poly, edges, buffer_setbacks)
+                setback_geometry = mapping(envelope)
             except Exception:
                 setback_geometry = None
 
