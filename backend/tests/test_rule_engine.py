@@ -5,6 +5,7 @@ import pytest
 from backend.app.engine.adu_preemption import apply_adu_preemption
 from backend.app.engine.rule_engine import (
     BASE_ZONE_RULES,
+    BMO_RFA_RULES,
     BuildingType,
     Confidence,
     ConstraintResolver,
@@ -12,6 +13,7 @@ from backend.app.engine.rule_engine import (
     _SFH_PARKING_FOOTPRINT_SF,
     _detect_overlay_conflicts,
     _filter_effective_rules,
+    _get_bmo_rfa_ratio,
     tag_confidence,
 )
 from backend.app.engine.zone_parser import ParsedZone
@@ -189,9 +191,11 @@ class TestProjectParams:
         assert adu.max_size_sf == 1200
 
     def test_params_dont_affect_sfh(self, resolver, r1_zone, parcel_data):
+        """sqft param caps ADU but not SFH; SFH max_size_sf is RFA-based."""
         result = resolver.resolve(r1_zone, parcel_data, rule_fragments=[], project_params={"sqft": 800})
         sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
-        assert sfh.max_size_sf is None
+        # R1 7500sf lot -> RFA 0.40 (7500 not < 7500 threshold) -> max = 3000
+        assert sfh.max_size_sf == 7500 * 0.40
 
 
 class TestBuildingTypeAllowance:
@@ -548,10 +552,9 @@ class TestBedroomBathroomValidation:
             assert "undersized" not in sfh.notes
 
     def test_bedrooms_trigger_far_check_without_sqft(self, resolver):
-        """5 bed / 4 bath (min_sqft=960) on small lot with FAR -> SFH not allowed if 960 > max_livable_sf."""
-        # Need a zone with far_max. R2 has far_max=3.0 from HD1.
-        # Use a small lot: lot_area=400sf -> max_buildable=400*3.0=1200, max_livable=1200-400=800
-        # min_sqft = 5*120 + 4*40 + 200 = 600+160+200 = 960 > 800 -> exceeds
+        """5 bed / 4 bath (min_sqft=960) on small lot with RFA -> SFH not allowed if 960 > max_buildable."""
+        # R2 uses BMO RFA 0.45 for SFH. lot_area=400sf -> max_buildable=400*0.45=180
+        # min_sqft = 5*120 + 4*40 + 200 = 600+160+200 = 960 > 180 -> exceeds
         r2_zone = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
         parcel = {"lot_area_sf": 400}
         params = {"bedrooms": 5, "bathrooms": 4}  # no sqft
@@ -559,20 +562,20 @@ class TestBedroomBathroomValidation:
         sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
         assert sfh.allowed is False
 
-    def test_parking_deduction_affects_sfh(self, resolver):
-        """Lot where max_buildable=1500, proposed sqft=1200 -> exceeds max_livable (1500-400=1100)."""
-        # R2-1: far_max=3.0 from HD1. lot_area=500 -> max_buildable=1500, max_livable=1100
-        # proposed_sqft=1200 > 1100 -> SFH not allowed
+    def test_parking_deduction_affects_duplex(self, resolver):
+        """Duplex uses HD FAR with parking deduction; SFH uses RFA without parking deduction."""
+        # R2-1: far_max=3.0 from HD1. lot_area=500 -> duplex_max_buildable=1500,
+        # duplex_max_livable=1500-400=1100. proposed_sqft=1200 > 1100 -> Duplex not allowed
         r2_zone = ParsedZone(zone_class="R2", height_district="1", raw="R2-1")
         parcel = {"lot_area_sf": 500}
         params = {"sqft": 1200}
         result = resolver.resolve(r2_zone, parcel, rule_fragments=[], project_params=params)
-        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
-        assert sfh.allowed is False
-        assert sfh.notes is not None
-        assert "parking" in sfh.notes.lower()
-        # max_size_sf should still report the total envelope (not livable)
-        assert sfh.max_size_sf == 1500
+        duplex = next(bt for bt in result.building_types if bt.building_type == BuildingType.DUPLEX)
+        assert duplex.allowed is False
+        assert duplex.notes is not None
+        assert "parking" in duplex.notes.lower()
+        # max_size_sf reports the total envelope (not livable)
+        assert duplex.max_size_sf == 1500
 
     def test_no_parking_deduction_for_adu(self, resolver):
         """Same lot, ADU is still allowed (parking waived under SB 13)."""
@@ -589,3 +592,58 @@ class TestBedroomBathroomValidation:
         result = resolver.resolve(r1_zone, parcel, rule_fragments=[])
         sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
         assert sfh.notes is None
+
+
+class TestBMORFA:
+    """Tests for BMO Residential Floor Area logic: tiering, per-building-type differentiation,
+    and parking deduction conditional behavior."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConstraintResolver()
+
+    def test_bmo_rfa_tier_r1(self, resolver):
+        """R1 zone: 5000sf lot -> RFA 0.45 -> max 2250; 8000sf lot -> RFA 0.40 -> max 3200."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+
+        # Small lot: 5000 < 7500 threshold -> 0.45
+        result_small = resolver.resolve(r1, {"lot_area_sf": 5000}, rule_fragments=[])
+        sfh_small = next(bt for bt in result_small.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh_small.max_size_sf == 2250
+
+        # Large lot: 8000 >= 7500 threshold -> 0.40
+        result_large = resolver.resolve(r1, {"lot_area_sf": 8000}, rule_fragments=[])
+        sfh_large = next(bt for bt in result_large.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh_large.max_size_sf == 3200
+
+    def test_sfh_vs_duplex_r3_far(self, resolver):
+        """R3-1 zone, 5000sf lot: SFH uses RFA (0.45 -> 2250), Duplex uses HD FAR (3.0 -> 15000)."""
+        r3 = ParsedZone(zone_class="R3", height_district="1", raw="R3-1")
+        parcel = {"lot_area_sf": 5000}
+        result = resolver.resolve(r3, parcel, rule_fragments=[])
+
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        assert sfh.max_size_sf == 2250  # 5000 * 0.45 RFA
+
+        duplex = next(bt for bt in result.building_types if bt.building_type == BuildingType.DUPLEX)
+        assert duplex.max_size_sf == 15000  # 5000 * 3.0 HD FAR
+
+    def test_no_parking_deduction_on_rfa(self, resolver):
+        """SFH max_size_sf = lot_area * RFA exactly — no 400sf parking deduction."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        parcel = {"lot_area_sf": 6000}
+        result = resolver.resolve(r1, parcel, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        # 6000 < 7500 -> RFA 0.45 -> 2700 exactly, no parking subtracted
+        expected = 6000 * 0.45
+        assert sfh.max_size_sf == expected
+
+    def test_far_max_in_sfh_constraints(self, resolver):
+        """SFH constraints list contains far_max with RFA value, not HD FAR."""
+        r1 = ParsedZone(zone_class="R1", height_district="1", raw="R1-1")
+        parcel = {"lot_area_sf": 5000}
+        result = resolver.resolve(r1, parcel, rule_fragments=[])
+        sfh = next(bt for bt in result.building_types if bt.building_type == BuildingType.SFH)
+        far_constraint = next(c for c in sfh.constraints if c.constraint_type == "far_max")
+        assert far_constraint.value == 0.45
+        assert "BMO" in far_constraint.citation
