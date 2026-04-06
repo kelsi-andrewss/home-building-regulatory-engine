@@ -66,11 +66,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         data: { type: 'FeatureCollection', features: [] },
       });
 
-      map.addSource('design-envelope', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-
       map.addLayer({
         id: 'parcel-fill',
         type: 'fill',
@@ -78,16 +73,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
         paint: {
           'fill-color': '#4f46e5',
           'fill-opacity': 0.05,
-        },
-      });
-
-      map.addLayer({
-        id: 'design-envelope-fill',
-        type: 'fill',
-        source: 'design-envelope',
-        paint: {
-          'fill-color': '#4f46e5',
-          'fill-opacity': 0.1,
         },
       });
 
@@ -109,16 +94,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
           'line-color': '#10b981',
           'line-width': 2,
           'line-dasharray': [3, 2],
-        },
-      });
-
-      map.addLayer({
-        id: 'design-envelope-stroke',
-        type: 'line',
-        source: 'design-envelope',
-        paint: {
-          'line-color': '#4f46e5',
-          'line-width': 2,
         },
       });
 
@@ -159,7 +134,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
       (map.getSource('parcel') as mapboxgl.GeoJSONSource)?.setData(empty);
       (map.getSource('setback') as mapboxgl.GeoJSONSource)?.setData(empty);
-      (map.getSource('design-envelope') as mapboxgl.GeoJSONSource)?.setData(empty);
       return;
     }
 
@@ -177,10 +151,11 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       features: [parcelFeature],
     });
 
-    if (assessment.setback_geometry) {
+    const envelopeGeometry = designConstraints?.envelope_geojson || assessment.setback_geometry;
+    if (envelopeGeometry) {
       const setbackFeature: GeoJSON.Feature = {
         type: 'Feature',
-        geometry: assessment.setback_geometry,
+        geometry: envelopeGeometry,
         properties: {},
       };
       (map.getSource('setback') as mapboxgl.GeoJSONSource)?.setData({
@@ -207,25 +182,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
       { padding: { top: 60, bottom: 60, left: 480, right: 60 }, duration: 2000 }
     );
   }, [assessment, designConstraints]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady.current) return;
-
-    const envelopeSource = map.getSource('design-envelope') as mapboxgl.GeoJSONSource;
-    if (!envelopeSource) return;
-
-    if (designConstraints?.envelope_geojson) {
-      const feature: GeoJSON.Feature = {
-        type: 'Feature',
-        geometry: designConstraints.envelope_geojson,
-        properties: {},
-      };
-      envelopeSource.setData({ type: 'FeatureCollection', features: [feature] });
-    } else {
-      envelopeSource.setData({ type: 'FeatureCollection', features: [] });
-    }
-  }, [designConstraints]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -279,7 +235,7 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
             />
             <span>Parcel Boundary</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span
               style={{
                 display: 'inline-block',
@@ -290,20 +246,6 @@ export default function MapboxMap({ assessment, hoveredConstraint, designConstra
               }}
             />
             <span>Setback Area</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span
-              style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                background: 'rgba(79, 70, 229, 0.2)',
-                border: '2px solid #4f46e5',
-                borderRadius: 4,
-                flexShrink: 0,
-              }}
-            />
-            <span>Design Envelope</span>
           </div>
         </div>
       )}
