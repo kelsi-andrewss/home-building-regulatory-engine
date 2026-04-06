@@ -5,7 +5,9 @@ import BuildabilityReport from './BuildabilityReport';
 import type { AssessmentResponse, Constraint, DesignConstraintResponse } from '../api/client';
 
 vi.mock('./ParameterInputs', () => ({
-  default: () => <div data-testid="parameter-inputs" />,
+  default: ({ maxBedrooms }: { maxBedrooms?: number | null }) => (
+    <div data-testid="parameter-inputs" data-max-bedrooms={maxBedrooms ?? ''} />
+  ),
 }));
 
 vi.mock('./DesignConstraintsPanel', () => ({
@@ -56,6 +58,7 @@ function makeAssessment(overrides: Partial<AssessmentResponse> = {}): Assessment
         constraints: [makeConstraint()],
         max_buildable_area_sf: 2500,
         max_units: 1,
+        max_bedrooms: null,
       },
     ],
     setback_geometry: null,
@@ -122,6 +125,7 @@ describe('BuildabilityReport', () => {
           constraints: [makeConstraint()],
           max_buildable_area_sf: null,
           max_units: null,
+          max_bedrooms: null,
         },
       ],
     });
@@ -149,6 +153,7 @@ describe('BuildabilityReport', () => {
           ],
           max_buildable_area_sf: 2500,
           max_units: 1,
+          max_bedrooms: null,
         },
       ],
     });
@@ -176,6 +181,7 @@ describe('BuildabilityReport', () => {
           constraints: [makeConstraint({ variance_available: true })],
           max_buildable_area_sf: 2500,
           max_units: 1,
+          max_bedrooms: null,
         },
       ],
     });
@@ -294,6 +300,32 @@ describe('BuildabilityReport', () => {
     );
 
     expect(screen.getByTestId('design-constraints-panel')).toBeInTheDocument();
+  });
+
+  it('passes max_bedrooms to ParameterInputs', () => {
+    const assessment = makeAssessment({
+      building_types: [
+        {
+          type: 'SFH',
+          allowed: true,
+          confidence: 'verified',
+          constraints: [makeConstraint()],
+          max_buildable_area_sf: 2500,
+          max_units: 1,
+          max_bedrooms: 5,
+        },
+      ],
+    });
+
+    render(
+      <BuildabilityReport
+        assessment={assessment}
+        selectedType="SFH"
+        onHoverConstraint={mockOnHover}
+      />,
+    );
+
+    expect(screen.getByTestId('parameter-inputs')).toHaveAttribute('data-max-bedrooms', '5');
   });
 
   it('does not render DesignConstraintsPanel when designConstraints is null', () => {

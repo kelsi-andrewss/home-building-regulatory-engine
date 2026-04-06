@@ -50,7 +50,7 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
 
   return (
     <div>
-      <ParameterInputs />
+      <ParameterInputs maxBedrooms={buildingType.max_bedrooms} />
       <div className="section-header">
         <span className="section-title">{TYPE_LABELS[selectedType]}</span>
         <span className={`badge ${buildingType.allowed ? 'badge-success' : 'badge-error'}`}>

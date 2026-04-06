@@ -128,4 +128,32 @@ describe('ParameterInputs', () => {
 
     expect(screen.getByRole('button')).toBeDisabled();
   });
+
+  it('shows warning when bedrooms exceed maxBedrooms', () => {
+    mockContextValue.projectParams = { bedrooms: 5, bathrooms: null, sqft: null };
+    render(<ParameterInputs maxBedrooms={3} />);
+
+    expect(screen.getByText(/maximum of 3 bedrooms/)).toBeInTheDocument();
+  });
+
+  it('does not show warning when bedrooms within maxBedrooms', () => {
+    mockContextValue.projectParams = { bedrooms: 3, bathrooms: null, sqft: null };
+    render(<ParameterInputs maxBedrooms={5} />);
+
+    expect(screen.queryByText(/maximum of/)).not.toBeInTheDocument();
+  });
+
+  it('does not show warning when maxBedrooms is null', () => {
+    mockContextValue.projectParams = { bedrooms: 10, bathrooms: null, sqft: null };
+    render(<ParameterInputs maxBedrooms={null} />);
+
+    expect(screen.queryByText(/maximum of/)).not.toBeInTheDocument();
+  });
+
+  it('does not show warning when bedrooms is null', () => {
+    mockContextValue.projectParams = { bedrooms: null, bathrooms: null, sqft: null };
+    render(<ParameterInputs maxBedrooms={3} />);
+
+    expect(screen.queryByText(/maximum of/)).not.toBeInTheDocument();
+  });
 });

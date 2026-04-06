@@ -25,6 +25,7 @@ export interface BuildingTypeAssessment {
   constraints: Constraint[];
   max_buildable_area_sf: number | null;
   max_units: number | null;
+  max_bedrooms: number | null;
 }
 
 export interface ZoningData {
