@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import anthropic
@@ -86,6 +87,11 @@ def _parse_adu_opportunity(raw: dict) -> ADUOpportunity:
     )
 
 
+def _strip_markdown_fences(text: str) -> str:
+    """Remove ```json / ``` wrappers that LLMs sometimes add around JSON."""
+    return re.sub(r"^```\w*\n?", "", text).rstrip("`").strip()
+
+
 class SynthesisService:
     """Translates resolved rule engine constraints into cited natural language."""
 
@@ -115,7 +121,7 @@ class SynthesisService:
             return _degraded_result()
 
         try:
-            data = json.loads(response_text)
+            data = json.loads(_strip_markdown_fences(response_text))
         except json.JSONDecodeError:
             logger.warning("Malformed JSON from Claude synthesis response")
             return _degraded_result()
