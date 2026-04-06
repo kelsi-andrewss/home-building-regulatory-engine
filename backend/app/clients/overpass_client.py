@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 
 import httpx
 from shapely.geometry import LineString
@@ -16,8 +17,9 @@ _HIGHWAY_TYPES = (
     "|unclassified|living_street|service"
 )
 
-# Simple dict cache keyed on rounded bbox tuple
-_cache: dict[tuple, list[LineString]] = {}
+# LRU cache keyed on rounded bbox tuple, bounded to prevent unbounded growth
+_CACHE_MAXSIZE = 256
+_cache: OrderedDict[tuple, list[LineString]] = OrderedDict()
 
 
 def _round_bbox(bbox: tuple[float, float, float, float]) -> tuple:
@@ -38,6 +40,7 @@ async def fetch_street_centerlines(
     """
     cache_key = _round_bbox(bbox)
     if cache_key in _cache:
+        _cache.move_to_end(cache_key)
         return _cache[cache_key]
 
     min_lng, min_lat, max_lng, max_lat = bbox
@@ -58,6 +61,8 @@ async def fetch_street_centerlines(
 
     streets = _parse_overpass_json(data)
     _cache[cache_key] = streets
+    if len(_cache) > _CACHE_MAXSIZE:
+        _cache.popitem(last=False)
     return streets
 
 
