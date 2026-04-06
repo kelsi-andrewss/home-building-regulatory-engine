@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 # Rough estimate: 1 token ~ 3.5 chars for English text
 CHARS_PER_TOKEN = 3.5
 
+# Hard ceiling on PDF size to prevent OOM / bandwidth saturation
+MAX_PDF_SIZE = 50 * 1024 * 1024  # 50 MB
+
 
 class PdfExtractionError(Exception):
     pass
@@ -47,13 +50,32 @@ class PdfProcessor:
 
         logger.info("Downloading PDF: %s", url)
         try:
-            resp = httpx.get(url, follow_redirects=True, timeout=120)
-            resp.raise_for_status()
+            with httpx.stream("GET", url, follow_redirects=True, timeout=120) as resp:
+                resp.raise_for_status()
+
+                content_length = resp.headers.get("content-length")
+                if content_length and int(content_length) > MAX_PDF_SIZE:
+                    raise PdfExtractionError(
+                        f"PDF at {url} exceeds size limit: "
+                        f"{int(content_length)} bytes > {MAX_PDF_SIZE} bytes"
+                    )
+
+                buf = bytearray()
+                for chunk in resp.iter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) > MAX_PDF_SIZE:
+                        raise PdfExtractionError(
+                            f"PDF at {url} exceeds size limit during download: "
+                            f"{len(buf)} bytes > {MAX_PDF_SIZE} bytes"
+                        )
+        except PdfExtractionError:
+            raise
         except httpx.HTTPError as e:
             raise PdfExtractionError(f"Failed to download PDF from {url}: {e}") from e
 
-        cached.write_bytes(resp.content)
-        return self._extract_bytes(resp.content, filename=cached.name, url=url)
+        data = bytes(buf)
+        cached.write_bytes(data)
+        return self._extract_bytes(data, filename=cached.name, url=url)
 
     def extract_from_path(self, path: Path, url: str = "") -> PdfDocument:
         """Extract text from a local PDF file."""
@@ -88,6 +110,11 @@ class PdfProcessor:
         return chunks
 
     def _extract_bytes(self, data: bytes, filename: str, url: str) -> PdfDocument:
+        if len(data) > MAX_PDF_SIZE:
+            raise PdfExtractionError(
+                f"PDF {filename} exceeds size limit: "
+                f"{len(data)} bytes > {MAX_PDF_SIZE} bytes"
+            )
         pages: list[PdfPage] = []
         try:
             with pdfplumber.open(io.BytesIO(data)) as pdf:
