@@ -23,6 +23,12 @@ def _is_wgs84(poly: Polygon) -> bool:
     return minx < 0 and -180 <= minx and -90 <= miny <= 90
 
 
+def _is_wgs84_linestring(line: LineString) -> bool:
+    """Detect whether a LineString is in WGS84 (negative x = western hemisphere)."""
+    minx, miny, maxx, maxy = line.bounds
+    return minx < 0 and -180 <= minx and -90 <= miny <= 90
+
+
 def _project_to_feet(poly: Polygon) -> Polygon:
     """Project WGS84 polygon to EPSG:2229 (feet) for LA County."""
     return transform(_to_2229, poly)
@@ -115,17 +121,22 @@ def _avg_y(p1: tuple, p2: tuple) -> float:
 
 def classify_parcel_edges(
     parcel_poly: Polygon,
+    street_geometries: list[LineString] | None = None,
 ) -> dict[str, list[LineString]]:
-    """Classify parcel boundary edges as front, rear, or side using MBR frontage heuristic.
+    """Classify parcel boundary edges as front, rear, or side.
 
-    Projects to EPSG:2229 (feet) for accurate MBR edge length comparison, then
-    maps classification back to original WGS84 edges.
+    When street_geometries is provided and non-empty, edges within 50ft of a
+    street centerline are classified as "front". Remaining edges are classified
+    as side vs rear using the MBR heuristic.
 
-    MVP simplification: without street-adjacency data, assign the short MBR edge with
-    the lowest y-coordinate as front (assumes south-facing parcel).
+    When street_geometries is None or empty, falls back entirely to the MBR
+    heuristic (assumes south-facing parcel).
 
-    Returns dict with keys "front", "rear", "side", each mapping to a list of LineStrings
-    in the original CRS.
+    Projects to EPSG:2229 (feet) for all distance comparisons, then maps
+    classifications back to original CRS edges.
+
+    Returns dict with keys "front", "rear", "side", each mapping to a list of
+    LineStrings in the original CRS.
     """
     needs_proj = _is_wgs84(parcel_poly)
     work_poly = _project_to_feet(parcel_poly) if needs_proj else parcel_poly
@@ -166,6 +177,18 @@ def classify_parcel_edges(
     rear_dir = _edge_direction(*rear_mbr_edge)
     side_dirs = [_edge_direction(*e) for e in side_mbr_edges]
 
+    # Project street geometries to EPSG:2229 when street proximity is requested
+    projected_streets: list[LineString] = []
+    use_street_proximity = bool(street_geometries)
+    if use_street_proximity:
+        for street in street_geometries:
+            if _is_wgs84_linestring(street):
+                projected_streets.append(transform(_to_2229, street))
+            else:
+                projected_streets.append(street)
+
+    _FRONT_DISTANCE_FT = 50.0
+
     # Classify actual parcel edges by most-parallel MBR edge
     # Work in projected coords for classification, return edges in original CRS
     result: dict[str, list[LineString]] = {"front": [], "rear": [], "side": []}
@@ -177,9 +200,18 @@ def classify_parcel_edges(
         if _edge_length(p1, p2) < 1e-10:
             continue
 
-        parcel_dir = _edge_direction(p1, p2)
-        # Build LineString from original CRS coordinates
+        # Build LineStrings from both projected and original CRS coordinates
+        work_edge = LineString([p1, p2])
         ls = LineString([orig_coords[i], orig_coords[i + 1]])
+
+        # Street proximity check: classify as front if within 50ft of any street
+        if use_street_proximity:
+            min_dist = min(work_edge.distance(s) for s in projected_streets)
+            if min_dist < _FRONT_DISTANCE_FT:
+                result["front"].append(ls)
+                continue
+
+        parcel_dir = _edge_direction(p1, p2)
 
         # Dot product with each MBR reference direction (absolute value for parallel check)
         dot_front = abs(parcel_dir[0] * front_dir[0] + parcel_dir[1] * front_dir[1])

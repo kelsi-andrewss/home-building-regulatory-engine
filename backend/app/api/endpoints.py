@@ -580,6 +580,7 @@ async def get_design_constraints(
 
     from shapely.geometry import mapping
 
+    from backend.app.clients.overpass_client import fetch_street_centerlines
     from backend.app.engine.geometry_utils import (
         buffer_inward_per_edge,
         classify_parcel_edges,
@@ -588,7 +589,20 @@ async def get_design_constraints(
     from backend.app.engine.panel_fit import check_panel_fit
 
     parcel_poly = parcel_polygon_from_geojson(parcel_geojson)
-    edges = classify_parcel_edges(parcel_poly)
+
+    # Fetch street centerlines from OSM; fall back gracefully on failure
+    street_geometries = None
+    try:
+        coords = parcel_geojson.get("coordinates", [[]])[0]
+        if coords:
+            lngs = [c[0] for c in coords]
+            lats = [c[1] for c in coords]
+            parcel_bbox = (min(lngs), min(lats), max(lngs), max(lats))
+            street_geometries = await fetch_street_centerlines(parcel_bbox)
+    except Exception:
+        logger.warning("Overpass street fetch failed; falling back to MBR classification")
+
+    edges = classify_parcel_edges(parcel_poly, street_geometries=street_geometries)
 
     buffer_setbacks = {"front": front_val, "side": side_val, "rear": rear_val}
     envelope_poly = buffer_inward_per_edge(parcel_poly, edges, buffer_setbacks)
