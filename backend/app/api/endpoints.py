@@ -254,6 +254,7 @@ def _resolved_to_schema(bta) -> BuildingTypeAssessment:
         ],
         max_buildable_area_sf=bta.max_size_sf,
         max_units=bta.max_units,
+        max_bedrooms=bta.max_bedrooms,
     )
 
 

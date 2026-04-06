@@ -40,6 +40,7 @@ class BuildingTypeAssessment:
     constraints: list[ResolvedConstraint]
     max_units: int | None = None
     max_size_sf: float | None = None
+    max_bedrooms: int | None = None
     notes: str | None = None
 
 
@@ -219,6 +220,15 @@ _DUPLEX_ZONES = {"R2", "RD1.5", "RD2", "RD3", "RD4", "RD5", "RD6", "R3", "R4"}
 # ADU parking waived under state law (SB 13).
 _SFH_PARKING_FOOTPRINT_SF = 400
 
+# CRC R304: minimum sleeping room area is 70 sf.
+_MIN_BEDROOM_SF = 70
+
+# Non-livable area deductions (kitchen, entry, hallways) for max bedroom calculation.
+# SFH/Guest House/Duplex: ~200 sf for kitchen + entry.
+_NON_LIVABLE_SF_DEFAULT = 200
+# ADU: ~400 sf for kitchen + bath + living in a compact unit.
+_NON_LIVABLE_SF_ADU = 400
+
 # ---- BMO Residential Floor Area (RFA) lookup ----
 # LAMC 12.21 C.10. Lot-size-tiered ratios per zone class.
 # Each entry: list of {max_lot_area, rfa} tiers evaluated in order.
@@ -253,6 +263,13 @@ def _get_bmo_rfa_ratio(zone_class: str, lot_area: float) -> float | None:
         if lot_area < tier["max_lot_area"]:
             return tier["rfa"]
     return tiers[-1]["rfa"]
+
+
+def _compute_max_bedrooms(max_livable_sf: float | None, non_livable_deduction: float) -> int | None:
+    """Derive max feasible bedrooms from livable area. Returns None if area unknown."""
+    if max_livable_sf is None or max_livable_sf <= non_livable_deduction:
+        return None
+    return int((max_livable_sf - non_livable_deduction) / _MIN_BEDROOM_SF)
 
 
 # Constraint types where "more restrictive" means LOWER value
@@ -587,12 +604,15 @@ class ConstraintResolver:
             sfh_notes_parts.append(undersized_note)
         sfh_notes = "; ".join(sfh_notes_parts) if sfh_notes_parts else None
 
+        sfh_max_bedrooms = _compute_max_bedrooms(sfh_max_livable, _NON_LIVABLE_SF_DEFAULT)
+
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.SFH,
             allowed=not sfh_sqft_exceeds,
             constraints=sfh_constraints,
             max_units=1,
             max_size_sf=sfh_max_buildable,
+            max_bedrooms=sfh_max_bedrooms,
             notes=sfh_notes,
         ))
 
@@ -604,12 +624,14 @@ class ConstraintResolver:
             requested = project_params["sqft"]
             if requested < adu_max_size:
                 adu_max_size = requested
+        adu_max_bedrooms = _compute_max_bedrooms(adu_max_size, _NON_LIVABLE_SF_ADU)
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.ADU,
             allowed=True,
             constraints=adu_result.constraints,
             max_units=1,
             max_size_sf=adu_max_size,
+            max_bedrooms=adu_max_bedrooms,
             notes="; ".join(adu_result.preemptions_applied) if adu_result.preemptions_applied else None,
         ))
 
@@ -626,6 +648,7 @@ class ConstraintResolver:
             constraints=sfh_constraints,
             max_units=1,
             max_size_sf=sfh_max_buildable,
+            max_bedrooms=sfh_max_bedrooms,
             notes=guest_house_notes,
         ))
 
@@ -663,12 +686,15 @@ class ConstraintResolver:
                 f"minus {_SFH_PARKING_FOOTPRINT_SF} sf parking)"
             )
 
+        duplex_max_bedrooms = _compute_max_bedrooms(duplex_max_livable, _NON_LIVABLE_SF_DEFAULT) if duplex_allowed else None
+
         building_types.append(BuildingTypeAssessment(
             building_type=BuildingType.DUPLEX,
             allowed=duplex_allowed and not duplex_sqft_exceeds,
             constraints=list(base_constraints) if duplex_allowed else [],
             max_units=max_units_duplex,
             max_size_sf=duplex_max_buildable if duplex_allowed else None,
+            max_bedrooms=duplex_max_bedrooms,
             notes=duplex_note,
         ))
 
