@@ -36,6 +36,7 @@ def _mock_parcel_service(parcel_data):
     """Mock ParcelService that returns the given ParcelData."""
     svc = AsyncMock()
     svc.lookup_by_address.return_value = parcel_data
+    svc.lookup_by_apn.return_value = parcel_data
     return svc
 
 
@@ -113,7 +114,7 @@ class TestDesignConstraintEndpoint:
 
         assert resp.parcel_apn == "1234-567-890"
         assert resp.envelope_geojson["type"] == "Polygon"
-        parcel_svc.lookup_by_address.assert_awaited_once_with("1234-567-890")
+        parcel_svc.lookup_by_apn.assert_awaited_once_with("1234-567-890")
 
     @pytest.mark.asyncio
     async def test_empty_request_returns_validation_error(self):
