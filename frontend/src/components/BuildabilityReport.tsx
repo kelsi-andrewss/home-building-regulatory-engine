@@ -137,9 +137,11 @@ export default function BuildabilityReport({ assessment, selectedType, designCon
                             <div style={{ marginBottom: '8px' }}>
                               <strong style={{ color: 'var(--text-main)' }}>Citation:</strong> {c.citation}
                             </div>
-                            <div>
-                              <strong style={{ color: 'var(--text-main)' }}>Explanation:</strong> {c.explanation}
-                            </div>
+                            {c.explanation && (
+                              <div>
+                                <strong style={{ color: 'var(--text-main)' }}>Explanation:</strong> {c.explanation}
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>

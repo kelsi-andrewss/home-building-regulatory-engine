@@ -493,7 +493,7 @@ class ConstraintResolver:
                 unit=frag.get("unit", ""),
                 confidence=confidence,
                 citation=frag.get("source_document", ""),
-                explanation=frag.get("value_text", ""),
+                explanation=frag.get("value_text") or f"{frag.get('source_document', '')} {frag['constraint_type']} = {frag['value']} {frag.get('unit', '')}".strip(),
                 source="specific_plan" if frag.get("specific_plan") else "base_zone",
                 variance_available=frag.get("variance_available", True),
             ))
